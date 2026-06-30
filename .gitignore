@@ -1,0 +1,12 @@
+# 测试/调试临时文件
+.playwright-cli/
+*.yaml
+*.yml
+dashboard_preview.png
+mobile_preview.png
+preview_home.png
+
+# 系统
+.DS_Store
+Thumbs.db
+node_modules/

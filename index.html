@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>商拓通 · 商务协作管理平台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- 顶部导航 -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div class="flex items-center px-6 h-16">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">商</div>
+        <div>
+          <h1 class="text-lg font-bold text-gray-800">商拓通</h1>
+          <p class="text-xs text-gray-400">商务协作管理平台</p>
+        </div>
+      </div>
+      <nav class="flex items-center gap-1 ml-10 nav-desktop">
+        <button class="nav-item active px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="dashboard">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>仪表盘
+        </button>
+        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="people">
+          <i data-lucide="users" class="w-4 h-4"></i>机构人员
+        </button>
+        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="timeline">
+          <i data-lucide="git-commit-vertical" class="w-4 h-4"></i>沟通时间线
+        </button>
+        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="record">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>录入工作
+        </button>
+      </nav>
+      <div class="ml-auto flex items-center gap-4 header-right">
+        <button onclick="openSyncModal()" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-500" title="云同步配置">
+          <span id="syncDot" class="sync-dot sync-off"></span>
+          <span id="syncText" class="text-xs">本地模式</span>
+        </button>
+        <span class="text-sm text-gray-400" id="currentDate"></span>
+        <button onclick="resetData()" class="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1" title="重置示例数据">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>重置
+        </button>
+      </div>
+      <!-- 手机端：云同步入口 -->
+      <button onclick="openSyncModal()" class="ml-auto md:hidden flex items-center gap-1">
+        <span id="syncDotMobile" class="sync-dot sync-off"></span>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 main-container">
+
+    <!-- ============ 仪表盘 ============ -->
+    <section class="view active" id="view-dashboard">
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 page-title">仪表盘</h2>
+        <p class="text-gray-500 text-sm mt-1">商务协作全局概览</p>
+      </div>
+      <div class="grid grid-cols-4 gap-5 mb-8 stat-grid" id="statCards"></div>
+      <div class="grid grid-cols-3 gap-6 dashboard-grid">
+        <div class="col-span-2 bg-white rounded-xl border border-gray-200 p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="clock" class="w-5 h-5 text-indigo-500"></i>最近沟通动态</h3>
+            <button onclick="switchView('timeline')" class="text-sm text-indigo-500 hover:text-indigo-600 flex items-center gap-1">查看全部 <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+          </div>
+          <div id="dashboardTimeline"></div>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-5"><i data-lucide="star" class="w-5 h-5 text-red-500"></i>核心决策者</h3>
+          <div id="dashboardKeyPersons" class="space-y-3"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 机构人员 ============ -->
+    <section class="view" id="view-people">
+      <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-800 page-title">机构与人员</h2>
+          <p class="text-gray-500 text-sm mt-1">管理客户机构、人员层级关系及对接关系</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="openOrgModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><i data-lucide="building-2" class="w-4 h-4"></i>添加机构</button>
+          <button onclick="openPersonModal()" class="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm hover:bg-indigo-600 flex items-center gap-2"><i data-lucide="user-plus" class="w-4 h-4"></i>添加人员</button>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex items-center gap-6 flex-wrap">
+        <span class="text-sm font-semibold text-gray-700">重要程度：</span>
+        <div class="flex items-center gap-1.5"><span class="imp-dot imp-S"></span><span class="text-sm text-gray-600">S级·核心决策者</span></div>
+        <div class="flex items-center gap-1.5"><span class="imp-dot imp-A"></span><span class="text-sm text-gray-600">A级·关键影响者</span></div>
+        <div class="flex items-center gap-1.5"><span class="imp-dot imp-B"></span><span class="text-sm text-gray-600">B级·重要对接人</span></div>
+        <div class="flex items-center gap-1.5"><span class="imp-dot imp-C"></span><span class="text-sm text-gray-600">C级·普通对接人</span></div>
+        <div class="flex items-center gap-1.5"><span class="imp-dot imp-D"></span><span class="text-sm text-gray-600">D级·辅助人员</span></div>
+      </div>
+      <div class="grid grid-cols-5 gap-6 people-grid">
+        <div class="col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+          <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="network" class="w-5 h-5 text-indigo-500"></i>机构人员树</h3>
+          <div id="orgTree"></div>
+        </div>
+        <div class="col-span-3 bg-white rounded-xl border border-gray-200 p-5">
+          <div id="personDetailPanel">
+            <div class="empty-state"><i data-lucide="mouse-pointer-click" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i><p>点击左侧机构或人员查看详情</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 时间线 ============ -->
+    <section class="view" id="view-timeline">
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 page-title">沟通时间线</h2>
+        <p class="text-gray-500 text-sm mt-1">所有拜访与沟通记录的统一时间线</p>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex items-center gap-3 flex-wrap filter-bar">
+        <span class="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><i data-lucide="filter" class="w-4 h-4"></i>筛选：</span>
+        <select id="filterType" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+          <option value="">全部类型</option><option value="visit">拜访</option><option value="call">电话</option><option value="email">邮件</option><option value="meeting">会议</option><option value="other">其他</option>
+        </select>
+        <select id="filterOrg" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"><option value="">全部机构</option></select>
+        <select id="filterPerson" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"><option value="">全部甲方人员</option></select>
+        <div class="ml-auto text-sm text-gray-400" id="timelineCount"></div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-6"><div id="timelineList"></div></div>
+    </section>
+
+    <!-- ============ 录入工作 ============ -->
+    <section class="view" id="view-record">
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 page-title">录入工作内容</h2>
+        <p class="text-gray-500 text-sm mt-1">记录每次商务沟通，自动同步到云端和时间线</p>
+      </div>
+      <div class="max-w-3xl bg-white rounded-xl border border-gray-200 p-8 record-form">
+        <form id="recordForm" onsubmit="submitRecord(event)">
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通日期 <span class="text-red-500">*</span></label>
+            <input type="date" id="recDate" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通类型 <span class="text-red-500">*</span></label>
+            <div class="grid grid-cols-5 gap-3 type-selector" id="typeSelector">
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-visit"><input type="radio" name="recType" value="visit" class="hidden" checked><i data-lucide="map-pin" class="w-5 h-5"></i>拜访</label>
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-call"><input type="radio" name="recType" value="call" class="hidden"><i data-lucide="phone" class="w-5 h-5"></i>电话</label>
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-email"><input type="radio" name="recType" value="email" class="hidden"><i data-lucide="mail" class="w-5 h-5"></i>邮件</label>
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-meeting"><input type="radio" name="recType" value="meeting" class="hidden"><i data-lucide="video" class="w-5 h-5"></i>会议</label>
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-other"><input type="radio" name="recType" value="other" class="hidden"><i data-lucide="more-horizontal" class="w-5 h-5"></i>其他</label>
+            </div></div>
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">我方参与人员 <span class="text-red-500">*</span></label>
+            <select id="recMyUser" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择...</option></select></div>
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">对接甲方人员 <span class="text-red-500">*</span></label>
+            <p class="text-xs text-gray-400 mb-2">可多选，选择本次沟通的甲方参与人员</p>
+            <div id="recClientPersons" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto"></div>
+            <p id="recClientError" class="text-red-500 text-xs mt-1 hidden">请至少选择一名甲方人员</p></div>
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">工作标题 <span class="text-red-500">*</span></label>
+            <input type="text" id="recTitle" required placeholder="如：拜访XX集团讨论年度合作方案" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+          <div class="mb-6"><label class="block text-sm font-semibold text-gray-700 mb-2">详细内容 <span class="text-red-500">*</span></label>
+            <textarea id="recContent" required rows="5" placeholder="记录沟通要点、讨论事项、下一步计划等..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm resize-none"></textarea></div>
+          <div class="flex gap-3">
+            <button type="submit" class="px-6 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600 flex items-center gap-2"><i data-lucide="check" class="w-4 h-4"></i>提交记录</button>
+            <button type="reset" class="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">清空</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 手机端底部导航 -->
+  <nav class="nav-mobile">
+    <button class="nav-mobile-item active" data-view="dashboard"><i data-lucide="layout-dashboard"></i>仪表盘</button>
+    <button class="nav-mobile-item" data-view="people"><i data-lucide="users"></i>人员</button>
+    <button class="nav-mobile-item" data-view="timeline"><i data-lucide="git-commit-vertical"></i>时间线</button>
+    <button class="nav-mobile-item" data-view="record"><i data-lucide="plus-circle"></i>录入</button>
+  </nav>
+
+  <!-- 模态框 -->
+  <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-overlay">
+    <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+    <div class="bg-gray-800 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm">
+      <i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><span id="toastMsg"></span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
