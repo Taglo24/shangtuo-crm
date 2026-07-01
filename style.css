@@ -31,18 +31,102 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC'
 .timeline-item::before {
   content: ''; position: absolute; left: 15px; top: 28px; bottom: 0; width: 2px; background: #E5E7EB;
 }
-.timeline-item:last-child::before { display: none; }
+.timeline-item:last-child::before,
+.timeline-item.org-break::before { display: none; }
+.timeline-item.org-break { padding-bottom: 0; margin-bottom: 20px; }
+
+/* 记录高亮定位动画 */
+.timeline-item.record-highlight > div {
+  animation: highlightFlash 3s ease;
+  border-color: #6366F1 !important;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.2) !important;
+}
+@keyframes highlightFlash {
+  0% { background: #EEF2FF; box-shadow: 0 0 0 4px rgba(99,102,241,0.3); }
+  30% { background: #EEF2FF; box-shadow: 0 0 0 4px rgba(99,102,241,0.3); }
+  100% { background: transparent; box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+}
+
+/* 关键词搜索高亮 */
+.keyword-highlight {
+  background: #FDE68A;
+  padding: 1px 2px;
+  border-radius: 3px;
+  color: #92400E;
+  font-weight: 600;
+}
+
+/* 沟通日历 */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.cal-header {
+  text-align: center; padding: 10px 0;
+  font-size: 14px; font-weight: 600; color: #6B7280;
+}
+.cal-weekend { color: #EF4444; }
+.cal-cell {
+  min-height: 90px; padding: 6px 8px;
+  border-radius: 6px; cursor: default;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.cal-cell.cal-empty { background: transparent; }
+.cal-cell.cal-has-records {
+  background: #EEF2FF; border-color: #C7D2FE; cursor: pointer;
+}
+.cal-cell.cal-has-records:hover {
+  background: #E0E7FF; border-color: #A5B4FC; box-shadow: 0 2px 4px rgba(99,102,241,0.15);
+}
+.cal-cell.cal-today {
+  border-color: #6366F1; box-shadow: 0 0 0 2px rgba(99,102,241,0.25);
+}
+.cal-day-num {
+  font-size: 15px; font-weight: 600; color: #374151; display: block; margin-bottom: 4px;
+}
+.cal-orgs {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.cal-org-tag {
+  font-size: 11px; font-weight: 600; color: #4338CA;
+  background: rgba(99,102,241,0.12); padding: 2px 5px; border-radius: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
 .timeline-dot {
   position: absolute; left: 8px; top: 4px; width: 16px; height: 16px; border-radius: 50%;
   border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ic, #6366F1); background: var(--ic, #6366F1);
 }
 
-/* 树形结构 */
-.tree-node { transition: all 0.15s; }
-.tree-children { padding-left: 24px; border-left: 1px dashed #E5E7EB; margin-left: 12px; }
-.tree-row { cursor: pointer; transition: background 0.15s; border-radius: 8px; }
+/* 树形结构 - 标准折线树 */
+.tree-node { transition: all 0.15s; position: relative; }
+.tree-children {
+  padding-left: 20px;
+  margin-left: 10px;
+  position: relative;
+}
+/* 竖线：连接同级所有子节点 */
+.tree-children::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 12px;
+  width: 1px; background: #D1D5DB;
+}
+/* 横线：每个子节点连接到竖线 */
+.tree-children > .tree-node::before {
+  content: ''; position: absolute; left: -10px; top: 16px;
+  width: 10px; height: 1px; background: #D1D5DB;
+}
+/* 最后一个子节点的竖线截断（不延伸到底部） */
+.tree-children > .tree-node:last-child::after {
+  content: ''; position: absolute; left: -10px; top: 17px;
+  width: 1px; height: 100%; background: #fff;
+}
+.tree-row { cursor: pointer; transition: background 0.15s; border-radius: 8px; position: relative; z-index: 1; }
 .tree-row:hover { background: #F3F4F6; }
 .tree-row.selected { background: #EEF2FF; }
+/* 选中节点的横线高亮 */
+.tree-children > .tree-node:has(.tree-row.selected)::before { background: #6366F1; height: 2px; }
 
 /* 模态框 */
 .modal-overlay { background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); }
@@ -60,6 +144,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC'
 .type-call { --tc: #0EA5E9; }
 .type-email { --tc: #8B5CF6; }
 .type-meeting { --tc: #F59E0B; }
+.type-online { --tc: #10B981; }
 .type-other { --tc: #6B7280; }
 
 .type-badge {

@@ -21,18 +21,18 @@
           <p class="text-xs text-gray-400">商务协作管理平台</p>
         </div>
       </div>
-      <nav class="flex items-center gap-1 ml-10 nav-desktop">
-        <button class="nav-item active px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="dashboard">
-          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>仪表盘
+      <nav class="flex items-center gap-2 ml-10 nav-desktop">
+        <button class="nav-item active px-5 py-2.5 rounded-lg text-base font-semibold text-gray-600 flex items-center gap-2" data-view="dashboard">
+          <i data-lucide="layout-dashboard" class="w-5 h-5"></i>仪表盘
         </button>
-        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="people">
-          <i data-lucide="users" class="w-4 h-4"></i>机构人员
+        <button class="nav-item px-5 py-2.5 rounded-lg text-base font-semibold text-gray-600 flex items-center gap-2" data-view="timeline">
+          <i data-lucide="git-commit-vertical" class="w-5 h-5"></i>沟通时间线
         </button>
-        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="timeline">
-          <i data-lucide="git-commit-vertical" class="w-4 h-4"></i>沟通时间线
+        <button class="nav-item px-5 py-2.5 rounded-lg text-base font-semibold text-gray-600 flex items-center gap-2" data-view="people">
+          <i data-lucide="users" class="w-5 h-5"></i>机构人员
         </button>
-        <button class="nav-item px-4 py-2 rounded-lg text-sm text-gray-600 flex items-center gap-2" data-view="record">
-          <i data-lucide="plus-circle" class="w-4 h-4"></i>录入工作
+        <button class="nav-item px-5 py-2.5 rounded-lg text-base font-semibold text-gray-600 flex items-center gap-2" data-view="record">
+          <i data-lucide="plus-circle" class="w-5 h-5"></i>录入工作
         </button>
       </nav>
       <div class="ml-auto flex items-center gap-4 header-right">
@@ -60,18 +60,23 @@
         <h2 class="text-2xl font-bold text-gray-800 page-title">仪表盘</h2>
         <p class="text-gray-500 text-sm mt-1">商务协作全局概览</p>
       </div>
-      <div class="grid grid-cols-4 gap-5 mb-8 stat-grid" id="statCards"></div>
+      <div class="grid grid-cols-3 gap-5 mb-8 stat-grid" id="statCards"></div>
       <div class="grid grid-cols-3 gap-6 dashboard-grid">
         <div class="col-span-2 bg-white rounded-xl border border-gray-200 p-6">
-          <div class="flex items-center justify-between mb-5">
-            <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="clock" class="w-5 h-5 text-indigo-500"></i>最近沟通动态</h3>
-            <button onclick="switchView('timeline')" class="text-sm text-indigo-500 hover:text-indigo-600 flex items-center gap-1">查看全部 <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="calendar-days" class="w-5 h-5 text-indigo-500"></i>沟通日历</h3>
           </div>
-          <div id="dashboardTimeline"></div>
+          <div class="flex items-center gap-3 mb-4">
+            <button onclick="navCalendar(-1)" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+            <span class="font-bold text-gray-800 text-lg" id="calMonthLabel"></span>
+            <button onclick="navCalendar(1)" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+            <div class="ml-auto text-xs text-gray-400" id="timelineCountDash"></div>
+          </div>
+          <div id="dashboardCalendar" class="max-h-[520px] overflow-y-auto"></div>
         </div>
         <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-5"><i data-lucide="star" class="w-5 h-5 text-red-500"></i>核心决策者</h3>
-          <div id="dashboardKeyPersons" class="space-y-3"></div>
+          <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-5"><i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>甲方机构</h3>
+          <div id="dashboardOrgs" class="space-y-3 max-h-[520px] overflow-y-auto"></div>
         </div>
       </div>
     </section>
@@ -113,15 +118,16 @@
     <section class="view" id="view-timeline">
       <div class="mb-6">
         <h2 class="text-2xl font-bold text-gray-800 page-title">沟通时间线</h2>
-        <p class="text-gray-500 text-sm mt-1">所有拜访与沟通记录的统一时间线</p>
       </div>
       <div class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex items-center gap-3 flex-wrap filter-bar">
         <span class="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><i data-lucide="filter" class="w-4 h-4"></i>筛选：</span>
-        <select id="filterType" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
-          <option value="">全部类型</option><option value="visit">拜访</option><option value="call">电话</option><option value="email">邮件</option><option value="meeting">会议</option><option value="other">其他</option>
-        </select>
         <select id="filterOrg" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"><option value="">全部机构</option></select>
         <select id="filterPerson" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"><option value="">全部甲方人员</option></select>
+        <select id="filterType" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+          <option value="">全部类型</option><option value="visit">拜访</option><option value="call">电话</option><option value="email">邮件</option><option value="meeting">会议</option><option value="online">线上</option><option value="other">其他</option>
+        </select>
+        <input type="text" id="filterKeyword" placeholder="关键词搜索..." oninput="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40">
+        <input type="hidden" id="filterDate">
         <div class="ml-auto text-sm text-gray-400" id="timelineCount"></div>
       </div>
       <div class="bg-white rounded-xl border border-gray-200 p-6"><div id="timelineList"></div></div>
@@ -138,18 +144,25 @@
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通日期 <span class="text-red-500">*</span></label>
             <input type="date" id="recDate" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通类型 <span class="text-red-500">*</span></label>
-            <div class="grid grid-cols-5 gap-3 type-selector" id="typeSelector">
+            <div class="grid grid-cols-3 gap-3 type-selector" id="typeSelector">
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-visit"><input type="radio" name="recType" value="visit" class="hidden" checked><i data-lucide="map-pin" class="w-5 h-5"></i>拜访</label>
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-call"><input type="radio" name="recType" value="call" class="hidden"><i data-lucide="phone" class="w-5 h-5"></i>电话</label>
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-email"><input type="radio" name="recType" value="email" class="hidden"><i data-lucide="mail" class="w-5 h-5"></i>邮件</label>
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-meeting"><input type="radio" name="recType" value="meeting" class="hidden"><i data-lucide="video" class="w-5 h-5"></i>会议</label>
+              <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-online"><input type="radio" name="recType" value="online" class="hidden"><i data-lucide="monitor" class="w-5 h-5"></i>线上</label>
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-other"><input type="radio" name="recType" value="other" class="hidden"><i data-lucide="more-horizontal" class="w-5 h-5"></i>其他</label>
             </div></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">我方参与人员 <span class="text-red-500">*</span></label>
             <select id="recMyUser" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择...</option></select></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">对接甲方人员 <span class="text-red-500">*</span></label>
-            <p class="text-xs text-gray-400 mb-2">可多选，选择本次沟通的甲方参与人员</p>
-            <div id="recClientPersons" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto"></div>
+            <div class="mb-3">
+              <label class="block text-xs text-gray-400 mb-1.5">第一步：选择甲方机构</label>
+              <select id="recClientOrg" onchange="renderRecClientPersons()" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择机构...</option></select>
+            </div>
+            <div id="recClientPersonsContainer" class="hidden">
+              <label class="block text-xs text-gray-400 mb-1.5">第二步：选择对接人员（可多选）</label>
+              <div id="recClientPersons" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto"></div>
+            </div>
             <p id="recClientError" class="text-red-500 text-xs mt-1 hidden">请至少选择一名甲方人员</p></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">工作标题 <span class="text-red-500">*</span></label>
             <input type="text" id="recTitle" required placeholder="如：拜访XX集团讨论年度合作方案" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
@@ -169,7 +182,6 @@
   <nav class="nav-mobile">
     <button class="nav-mobile-item active" data-view="dashboard"><i data-lucide="layout-dashboard"></i>仪表盘</button>
     <button class="nav-mobile-item" data-view="people"><i data-lucide="users"></i>人员</button>
-    <button class="nav-mobile-item" data-view="timeline"><i data-lucide="git-commit-vertical"></i>时间线</button>
     <button class="nav-mobile-item" data-view="record"><i data-lucide="plus-circle"></i>录入</button>
   </nav>
 

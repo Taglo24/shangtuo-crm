@@ -19,6 +19,7 @@ const TYPE_CONFIG = {
   call:    { label: '电话', icon: 'phone',     color: '#0EA5E9', cls: 'type-call' },
   email:   { label: '邮件', icon: 'mail',      color: '#8B5CF6', cls: 'type-email' },
   meeting: { label: '会议', icon: 'video',     color: '#F59E0B', cls: 'type-meeting' },
+  online:  { label: '线上', icon: 'monitor',   color: '#10B981', cls: 'type-online' },
   other:   { label: '其他', icon: 'file-text', color: '#6B7280', cls: 'type-other' },
 };
 
@@ -173,14 +174,27 @@ function initSampleData() {
     clientPersons: [
       { id: 'cp1', orgId: 'org1', name: '陈志远', position: '集团董事长', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****8888' },
       { id: 'cp2', orgId: 'org1', name: '赵国强', position: '集团总裁', importance: 'S', parentId: 'cp1', myContactId: 'my1', phone: '139****6666' },
+      // 赵国强(总裁)下3个平级副总
       { id: 'cp3', orgId: 'org1', name: '孙丽华', position: '副总裁·分管IT', importance: 'A', parentId: 'cp2', myContactId: 'my2', phone: '137****5555' },
+      { id: 'cp6', orgId: 'org1', name: '郑伟', position: '副总裁·分管采购', importance: 'B', parentId: 'cp2', myContactId: 'my2', phone: '133****1111' },
+      { id: 'cp11', orgId: 'org1', name: '钱永涛', position: '副总裁·分管财务', importance: 'A', parentId: 'cp2', myContactId: 'my1', phone: '131****2222' },
+      // 孙丽华(IT副总)下2个平级总监
       { id: 'cp4', orgId: 'org1', name: '周建明', position: '信息技术部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '136****3333' },
+      { id: 'cp12', orgId: 'org1', name: '冯雅琴', position: '数据运营部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '132****5555' },
+      // 周建明(IT总监)下2个平级经理
       { id: 'cp5', orgId: 'org1', name: '吴小燕', position: '信息技术部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '135****2222' },
-      { id: 'cp6', orgId: 'org1', name: '郑伟', position: '采购部主管', importance: 'B', parentId: 'cp2', myContactId: 'my2', phone: '133****1111' },
+      { id: 'cp13', orgId: 'org1', name: '许文斌', position: '信息安全部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '134****6666' },
+      // 锐捷科技
       { id: 'cp7', orgId: 'org2', name: '黄晓峰', position: 'CEO·创始人', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****9999' },
+      // 黄晓峰(CEO)下2个平级C级
       { id: 'cp8', orgId: 'org2', name: '林婉清', position: 'CTO', importance: 'A', parentId: 'cp7', myContactId: 'my3', phone: '139****7777' },
+      { id: 'cp14', orgId: 'org2', name: '秦朗', position: 'CFO', importance: 'A', parentId: 'cp7', myContactId: 'my1', phone: '137****3333' },
+      // 林婉清(CTO)下2个平级总监
       { id: 'cp9', orgId: 'org2', name: '高磊', position: '产品总监', importance: 'B', parentId: 'cp8', myContactId: 'my4', phone: '136****4444' },
+      { id: 'cp15', orgId: 'org2', name: '沈雨欣', position: '研发总监', importance: 'B', parentId: 'cp8', myContactId: 'my3', phone: '135****7777' },
+      // 高磊(产品总监)下2个平级
       { id: 'cp10', orgId: 'org2', name: '马晓宇', position: '研发主管', importance: 'C', parentId: 'cp9', myContactId: 'my3', phone: '135****0000' },
+      { id: 'cp16', orgId: 'org2', name: '韩雪', position: '产品经理', importance: 'C', parentId: 'cp9', myContactId: 'my4', phone: '138****4444' },
     ],
     records: [
       { id: 'r1', date: getDateOffset(-1), type: 'visit', title: '拜访中诚集团·年度合作方案沟通', content: '与陈董、赵总裁就年度数字化合作方案进行深入沟通。陈董对智能风控系统表示高度认可，要求信息技术部配合推进方案细化。下一步：两周内提交详细方案。', myUserId: 'my1', clientPersonIds: ['cp1', 'cp2', 'cp3'], createdAt: now - 86400000 },
@@ -275,7 +289,17 @@ function switchView(viewName) {
 
   if (viewName === 'dashboard') renderDashboard();
   if (viewName === 'people') renderPeoplePage();
-  if (viewName === 'timeline') renderTimeline();
+  if (viewName === 'timeline') {
+    if (pendingDateFilter) {
+      document.getElementById('filterDate').value = pendingDateFilter;
+      document.querySelector('#view-timeline .page-title').textContent = '沟通时间线 · ' + formatDateFull(pendingDateFilter);
+      pendingDateFilter = null;
+    } else {
+      document.getElementById('filterDate').value = '';
+      document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
+    }
+    renderTimeline();
+  }
   if (viewName === 'record') renderRecordPage();
   if (lucide) lucide.createIcons();
   window.scrollTo(0, 0);
@@ -290,13 +314,12 @@ function renderDashboard() {
 
   const stats = [
     { label: '客户机构', value: DB.orgs.length, icon: 'building-2', bg: 'bg-indigo-50', tc: 'text-indigo-500' },
-    { label: '甲方人员', value: DB.clientPersons.length, icon: 'users', bg: 'bg-blue-50', tc: 'text-blue-500' },
     { label: '我方人员', value: DB.myUsers.length, icon: 'user-check', bg: 'bg-green-50', tc: 'text-green-500' },
     { label: '近30天沟通', value: monthRecords.length, icon: 'message-square', bg: 'bg-orange-50', tc: 'text-orange-500' },
   ];
 
   document.getElementById('statCards').innerHTML = stats.map(s => `
-    <div class="bg-white rounded-xl border border-gray-200 p-5 card-hover">
+    <div class="bg-white rounded-xl border border-gray-200 p-5 card-hover${s.label === '我方人员' || s.label === '客户机构' ? ' cursor-pointer' : ''}" ${s.label === '我方人员' ? `onclick="openMyUsersModal()"` : s.label === '客户机构' ? `onclick="goToPeople()"` : ''}>
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500">${s.label}</p>
@@ -309,57 +332,200 @@ function renderDashboard() {
     </div>
   `).join('');
 
-  const recentRecords = [...DB.records].sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 5);
-  document.getElementById('dashboardTimeline').innerHTML = recentRecords.length ? recentRecords.map(r => {
-    const type = TYPE_CONFIG[r.type];
-    const myUser = getMyUser(r.myUserId);
-    const persons = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean);
-    return `
-      <div class="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
-        <div class="${type.cls} flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center" style="background:${type.color}15">
-          <i data-lucide="${type.icon}" class="w-4 h-4" style="color:${type.color}"></i>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-semibold text-gray-800 truncate">${r.title}</span>
-            <span class="type-badge ${type.cls} flex-shrink-0">${type.label}</span>
-          </div>
-          <div class="flex items-center gap-3 mt-1 text-xs text-gray-400">
-            <span>${formatDate(r.date)}</span>
-            <span>${myUser ? myUser.name : ''}</span>
-            <span class="truncate">${persons.map(p => p.name).join('、')}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('') : '<div class="empty-state"><p>暂无沟通记录</p></div>';
+  renderDashboardCalendar();
 
-  const keyPersons = DB.clientPersons.filter(p => p.importance === 'S' || p.importance === 'A');
-  document.getElementById('dashboardKeyPersons').innerHTML = keyPersons.length ? keyPersons.map(p => {
-    const org = getOrg(p.orgId);
-    const myUser = getMyUser(p.myContactId);
-    return `
-      <div class="imp-${p.importance} person-card bg-gray-50 rounded-lg p-3 flex items-center gap-3">
-        <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background:${IMPORTANCE_CONFIG[p.importance].color}">${p.name[0]}</div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-semibold text-gray-800">${p.name}</span>
-            <span class="imp-badge">${IMPORTANCE_CONFIG[p.importance].short}</span>
+  // 右侧：甲方机构列表
+  const orgsContainer = document.getElementById('dashboardOrgs');
+  if (orgsContainer) {
+    orgsContainer.innerHTML = DB.orgs.length ? DB.orgs.map(o => {
+      const persons = DB.clientPersons.filter(p => p.orgId === o.id);
+      const records = DB.records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === o.id; }));
+      const keyCount = persons.filter(p => p.importance === 'S' || p.importance === 'A').length;
+      return `
+        <div class="border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all card-hover" onclick="dashFilterByOrg('${o.id}')" title="点击筛选该机构沟通记录">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">${o.name[0]}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-gray-800 text-sm">${o.name}</span>
+              </div>
+              <p class="text-xs text-gray-400 mt-0.5">${o.industry || '未设置行业'}</p>
+            </div>
           </div>
-          <p class="text-xs text-gray-400 truncate">${p.position} · ${org ? org.name : ''}</p>
+          <div class="flex items-center gap-4 text-xs">
+            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${persons.length}人</span></div>
+            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="star" class="w-3.5 h-3.5 text-orange-400"></i><span>核心${keyCount}人</span></div>
+            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="message-square" class="w-3.5 h-3.5"></i><span>${records.length}条沟通</span></div>
+          </div>
         </div>
-        <span class="text-xs text-gray-400 flex-shrink-0">对接:${myUser ? myUser.name : '-'}</span>
-      </div>
-    `;
-  }).join('') : '<div class="empty-state"><p>暂无核心人员</p></div>';
+      `;
+    }).join('') : '<div class="empty-state"><p>暂无机构</p></div>';
+  }
 
   if (lucide) lucide.createIcons();
+}
+
+// 跳转到机构人员页
+function goToPeople() { selectedTreeNode = null; switchView('people'); }
+
+// 我方人员弹窗 - 展示我方人员及其服务的甲方机构
+function openMyUsersModal() {
+  if (DB.myUsers.length === 0) { showToast('暂无我方人员'); return; }
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6 max-h-[80vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i data-lucide="user-check" class="w-5 h-5 text-green-500"></i>我方人员 · 服务机构一览</h3>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" title="关闭"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="space-y-4">
+        ${DB.myUsers.map(u => {
+          // 查找该人员对接的甲方人员及其机构
+          const clientPersons = DB.clientPersons.filter(p => p.myContactId === u.id);
+          const orgs = [...new Set(clientPersons.map(p => p.orgId))];
+          const records = DB.records.filter(r => r.myUserId === u.id).length;
+          return `
+            <div class="border border-gray-200 rounded-xl p-4">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold text-sm">${u.name[0]}</div>
+                <div>
+                  <div class="font-bold text-gray-800 text-sm">${u.name}</div>
+                  <div class="text-xs text-gray-400">${u.position}</div>
+                </div>
+                <div class="ml-auto text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">${records}条记录</div>
+              </div>
+              ${orgs.length ? `
+                <div class="space-y-2">
+                  <p class="text-xs text-gray-500 font-semibold flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>服务的甲方机构：</p>
+                  <div class="flex flex-wrap gap-2">
+                    ${orgs.map(oid => {
+                      const o = getOrg(oid);
+                      const ps = clientPersons.filter(p => p.orgId === oid);
+                      return o ? `
+                        <div class="bg-indigo-50 rounded-lg px-3 py-2 min-w-[140px] border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors" onclick="closeModal(); setTimeout(()=>jumpToOrg('${oid}'),80)">
+                          <p class="text-sm font-semibold text-indigo-700">${o.name}</p>
+                          <p class="text-xs text-indigo-400 mt-0.5">对接 ${ps.length} 人：${ps.map(p => p.name).join('、')}</p>
+                        </div>
+                      ` : '';
+                    }).join('')}
+                  </div>
+                </div>
+              ` : '<p class="text-xs text-gray-400">暂未对接甲方人员</p>'}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="flex mt-5">
+        <button onclick="closeModal()" class="w-full px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">关闭</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+// 点击仪表盘机构卡片筛选左侧时间线
+let dashSelectedOrg = null;
+function dashFilterByOrg(orgId) {
+  // 再次点击同一个机构则取消筛选
+  if (dashSelectedOrg === orgId) {
+    dashSelectedOrg = null;
+  } else {
+    dashSelectedOrg = orgId;
+  }
+  // 高亮选中机构
+  document.querySelectorAll('#dashboardOrgs > div').forEach(el => {
+    el.classList.remove('border-indigo-500', 'bg-indigo-50');
+  });
+  if (dashSelectedOrg) {
+    const idx = DB.orgs.findIndex(o => o.id === orgId);
+    const cards = document.querySelectorAll('#dashboardOrgs > div');
+    if (cards[idx]) cards[idx].classList.add('border-indigo-500', 'bg-indigo-50');
+  }
+  // 跳转到沟通时间线页并筛选
+  switchView('timeline');
+  setTimeout(() => {
+    document.getElementById('filterOrg').value = dashSelectedOrg || '';
+    renderTimeline();
+  }, 50);
+}
+
+// 仪表盘沟通日历
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1; // 1-12
+
+function navCalendar(dir) {
+  calMonth += dir;
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  renderDashboardCalendar();
+}
+
+function renderDashboardCalendar() {
+  document.getElementById('calMonthLabel').textContent = calYear + '年' + calMonth + '月';
+
+  // 统计当月所有记录并按日期分组
+  const prefix = `${calYear}-${String(calMonth).padStart(2,'0')}`;
+  const monthRecords = DB.records.filter(r => r.date.startsWith(prefix));
+  const dayMap = {};
+  monthRecords.forEach(r => {
+    if (!dayMap[r.date]) dayMap[r.date] = [];
+    dayMap[r.date].push(r);
+  });
+
+  const countEl = document.getElementById('timelineCountDash');
+  if (countEl) countEl.textContent = `本月 ${monthRecords.length} 条沟通`;
+
+  // 计算日历格子
+  const firstDay = new Date(calYear, calMonth - 1, 1).getDay(); // 0=周日
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // 周一为第0格
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  let cells = '';
+  // 前置空白
+  for (let i = 0; i < startOffset; i++) cells += '<div class="cal-cell cal-empty"></div>';
+  // 日期格子
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const records = dayMap[dateStr] || [];
+    const isToday = dateStr === todayStr;
+    const orgNames = [...new Set(records.flatMap(r => r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId)))].map(id => getOrg(id)).filter(Boolean);
+
+    cells += `<div class="cal-cell${isToday ? ' cal-today' : ''}${records.length ? ' cal-has-records' : ''}" onclick="${records.length ? `clickCalDay('${dateStr}')` : ''}" title="${records.length ? records.length+'条沟通记录' : ''}">
+      <span class="cal-day-num">${d}</span>
+      ${orgNames.length ? `<div class="cal-orgs">${orgNames.map(o => `<span class="cal-org-tag">${o.name.length > 4 ? o.name.substring(0,4)+'…' : o.name}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  document.getElementById('dashboardCalendar').innerHTML = `
+    <div class="cal-grid">
+      <div class="cal-header">一</div><div class="cal-header">二</div><div class="cal-header">三</div>
+      <div class="cal-header">四</div><div class="cal-header">五</div><div class="cal-header cal-weekend">六</div><div class="cal-header cal-weekend">日</div>
+      ${cells}
+    </div>`;
+
+  if (lucide) lucide.createIcons();
+}
+
+// 点击日历某天跳转到沟通时间线页面并筛选该日期
+let pendingDateFilter = null;
+function clickCalDay(dateStr) {
+  pendingDateFilter = dateStr;
+  switchView('timeline');
 }
 
 // =====================================================
 // 机构人员页
 // =====================================================
 function renderPeoplePage() {
+  // 默认折叠所有人名节点 + 机构节点（只保留机构名称）
+  collapsedNodes = new Set([
+    ...DB.clientPersons.filter(p => getChildren(p.id).length > 0).map(p => p.id),
+    ...DB.orgs.map(o => o.id)
+  ]);
+
   renderOrgTree();
   if (selectedTreeNode) {
     if (selectedTreeNode.type === 'org') renderOrgDetail(selectedTreeNode.id);
@@ -374,6 +540,51 @@ function renderPeoplePage() {
   if (lucide) lucide.createIcons();
 }
 
+// 折叠状态记录：展开的节点 id 集合，默认全部展开
+let collapsedNodes = new Set();
+
+function isCollapsed(id) { return collapsedNodes.has(id); }
+function toggleCollapse(id) {
+  if (collapsedNodes.has(id)) collapsedNodes.delete(id);
+  else collapsedNodes.add(id);
+}
+
+// 展开/折叠机构及其下所有人员（箭头专用）
+function toggleOrgCollapse(orgId) {
+  const personIds = DB.clientPersons.filter(p => p.orgId === orgId).map(p => p.id);
+  if (collapsedNodes.has(orgId)) {
+    // 折叠→展开：机构+所有人员都展开
+    collapsedNodes.delete(orgId);
+    personIds.forEach(pid => collapsedNodes.delete(pid));
+  } else {
+    // 展开→折叠：机构+所有人员都折叠
+    collapsedNodes.add(orgId);
+    personIds.forEach(pid => collapsedNodes.add(pid));
+  }
+}
+
+// 展开/折叠人员及其所有下级（箭头专用）
+function togglePersonCollapse(personId) {
+  // 获取该人员下的所有子孙节点
+  function getDescendants(id) {
+    const ids = [];
+    const children = DB.clientPersons.filter(p => p.parentId === id);
+    for (const c of children) {
+      ids.push(c.id);
+      ids.push(...getDescendants(c.id));
+    }
+    return ids;
+  }
+  const descendants = getDescendants(personId);
+  if (collapsedNodes.has(personId)) {
+    collapsedNodes.delete(personId);
+    descendants.forEach(did => collapsedNodes.delete(did));
+  } else {
+    collapsedNodes.add(personId);
+    descendants.forEach(did => collapsedNodes.add(did));
+  }
+}
+
 function renderOrgTree() {
   const container = document.getElementById('orgTree');
   if (DB.orgs.length === 0) {
@@ -383,14 +594,16 @@ function renderOrgTree() {
   container.innerHTML = DB.orgs.map(org => {
     const persons = DB.clientPersons.filter(p => p.orgId === org.id);
     const isSelected = selectedTreeNode && selectedTreeNode.type === 'org' && selectedTreeNode.id === org.id;
+    const collapsed = isCollapsed(org.id);
     return `
       <div class="tree-node">
         <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2" onclick="selectNode('org','${org.id}')">
+          <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); toggleOrgCollapse('${org.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>
           <i data-lucide="building-2" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
           <span class="text-sm font-semibold text-gray-700">${org.name}</span>
           <span class="text-xs text-gray-400 ml-auto">${persons.length}人</span>
         </div>
-        <div class="tree-children">${renderPersonTree(org.id, null)}</div>
+        ${!collapsed ? `<div class="tree-children">${renderPersonTree(org.id, null)}</div>` : ''}
       </div>`;
   }).join('');
 }
@@ -401,23 +614,46 @@ function renderPersonTree(orgId, parentId) {
   return persons.map(p => {
     const children = getChildren(p.id);
     const isSelected = selectedTreeNode && selectedTreeNode.type === 'person' && selectedTreeNode.id === p.id;
+    const collapsed = isCollapsed(p.id);
+    const hasChildren = children.length > 0;
     return `
       <div class="tree-node">
         <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2" onclick="selectNode('person','${p.id}')">
+          ${hasChildren
+            ? `<i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); togglePersonCollapse('${p.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>`
+            : `<span class="w-4 flex-shrink-0"></span>`
+          }
           <span class="imp-dot imp-${p.importance} flex-shrink-0"></span>
           <span class="text-sm text-gray-700">${p.name}</span>
           <span class="text-xs text-gray-400 truncate hidden sm:inline">${p.position}</span>
-          ${children.length ? `<span class="text-xs text-gray-400 ml-auto">${children.length}下属</span>` : ''}
+          ${hasChildren ? `<span class="text-xs text-gray-400 ml-auto">${children.length}下属</span>` : ''}
         </div>
-        ${children.length ? `<div class="tree-children">${renderPersonTree(orgId, p.id)}</div>` : ''}
+        ${hasChildren && !collapsed ? `<div class="tree-children">${renderPersonTree(orgId, p.id)}</div>` : ''}
       </div>`;
   }).join('');
 }
 
 function selectNode(type, id) {
   selectedTreeNode = { type, id };
-  if (type === 'org') renderOrgDetail(id);
-  else renderPersonDetail(id);
+  if (type === 'org') {
+    // 点击已展开的机构 → 折叠；点击折叠的机构 → 展开
+    if (!isCollapsed(id)) {
+      // 已展开 → 折叠（机构本身 + 所有人员）
+      collapsedNodes.add(id);
+      DB.clientPersons.filter(p => p.orgId === id).map(p => p.id).forEach(pid => collapsedNodes.add(pid));
+      selectedTreeNode = null;
+      document.getElementById('personDetailPanel').innerHTML = `
+        <div class="empty-state">
+          <i data-lucide="mouse-pointer-click" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
+          <p>点击左侧机构或人员查看详情</p>
+        </div>`;
+    } else {
+      // 已折叠 → 展开
+      collapsedNodes.delete(id);
+      DB.clientPersons.filter(p => p.orgId === id).map(p => p.id).forEach(pid => collapsedNodes.delete(pid));
+      renderOrgDetail(id);
+    }
+  } else renderPersonDetail(id);
   renderOrgTree();
   if (lucide) lucide.createIcons();
 }
@@ -516,7 +752,7 @@ function renderPersonDetail(personId) {
         const type = TYPE_CONFIG[r.type];
         const myU = getMyUser(r.myUserId);
         return `
-          <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer" onclick="switchView('timeline')">
+          <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer" onclick="jumpToRecord('${r.id}')">
             <div class="flex items-center gap-2 mb-1">
               <span class="type-badge ${type.cls}">${type.label}</span>
               <span class="text-sm font-semibold text-gray-800">${r.title}</span>
@@ -669,20 +905,30 @@ function renderTimeline() {
   filterOrg.innerHTML = '<option value="">全部机构</option>' + DB.orgs.map(o => `<option value="${o.id}" ${o.id === currentOrg ? 'selected' : ''}>${o.name}</option>`).join('');
 
   const filterPerson = document.getElementById('filterPerson');
+  const selectedOrg = document.getElementById('filterOrg').value;
   const currentPerson = filterPerson.value;
-  let personOpts = DB.clientPersons.slice();
-  if (document.getElementById('filterOrg').value) {
-    personOpts = personOpts.filter(p => p.orgId === document.getElementById('filterOrg').value);
+  if (selectedOrg) {
+    const personOpts = DB.clientPersons.filter(p => p.orgId === selectedOrg);
+    filterPerson.innerHTML = '<option value="">全部甲方人员</option>' + personOpts.map(p => `<option value="${p.id}" ${p.id === currentPerson ? 'selected' : ''}>${p.name}（${p.position}）</option>`).join('');
+    filterPerson.disabled = false;
+    filterPerson.className = 'border border-gray-300 rounded-lg px-3 py-1.5 text-sm';
+  } else {
+    filterPerson.innerHTML = '<option value="">请先选择机构</option>';
+    filterPerson.disabled = true;
+    filterPerson.className = 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-400 bg-gray-50';
   }
-  filterPerson.innerHTML = '<option value="">全部甲方人员</option>' + personOpts.map(p => `<option value="${p.id}" ${p.id === currentPerson ? 'selected' : ''}>${p.name}（${p.position}）</option>`).join('');
 
   let records = [...DB.records];
   const fType = document.getElementById('filterType').value;
   const fOrg = document.getElementById('filterOrg').value;
   const fPerson = document.getElementById('filterPerson').value;
+  const fKeyword = (document.getElementById('filterKeyword')?.value || '').trim().toLowerCase();
   if (fType) records = records.filter(r => r.type === fType);
   if (fPerson) records = records.filter(r => r.clientPersonIds.includes(fPerson));
   if (fOrg) records = records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === fOrg; }));
+  if (fKeyword) records = records.filter(r => r.title.toLowerCase().includes(fKeyword) || r.content.toLowerCase().includes(fKeyword));
+  const fDate = document.getElementById('filterDate')?.value;
+  if (fDate) records = records.filter(r => r.date === fDate);
   records.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 
   document.getElementById('timelineCount').textContent = `共 ${records.length} 条记录`;
@@ -696,6 +942,15 @@ function renderTimeline() {
 
   const groups = {};
   records.forEach(r => { if (!groups[r.date]) groups[r.date] = []; groups[r.date].push(r); });
+  // 同一日期内按机构分组排序
+  Object.values(groups).forEach(recs => {
+    recs.sort((a, b) => {
+      const ao = a.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+      const bo = b.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+      if (ao !== bo) return ao.localeCompare(bo);
+      return a.createdAt - b.createdAt;
+    });
+  });
 
   container.innerHTML = Object.entries(groups).map(([date, recs]) => `
     <div class="mb-6 last:mb-0">
@@ -705,37 +960,115 @@ function renderTimeline() {
         <span class="text-sm text-gray-400">（${formatDate(date)}）</span>
         <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">${recs.length}条</span>
       </div>
-      ${recs.map(r => renderTimelineItem(r)).join('')}
+      ${recs.map((r, i) => {
+        const curOrgs = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+        const nextOrgs = i < recs.length - 1 ? recs[i+1].clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',') : '';
+        const isBreak = i === recs.length - 1 || curOrgs !== nextOrgs;
+        return renderTimelineItem(r, isBreak);
+      }).join('')}
     </div>
   `).join('');
 
   if (lucide) lucide.createIcons();
 }
 
-function renderTimelineItem(r) {
+// 点击相关沟通记录跳转到沟通时间线页并高亮定位
+function jumpToRecord(recordId) {
+  switchView('timeline');
+  setTimeout(() => {
+    const container = document.getElementById('timelineList');
+    const items = container.querySelectorAll('.timeline-item');
+    let target = null;
+    items.forEach(item => {
+      item.classList.remove('record-highlight');
+      if (item.dataset.recordId === recordId) target = item;
+    });
+    if (target) {
+      target.classList.add('record-highlight');
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => target.classList.remove('record-highlight'), 3000);
+    }
+  }, 300);
+}
+
+function renderTimelineItem(r, isOrgBreak) {
   const type = TYPE_CONFIG[r.type];
   const myUser = getMyUser(r.myUserId);
   const persons = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean);
+  const orgs = [...new Set(persons.map(p => p.orgId))];
+  const keyword = (document.getElementById('filterKeyword')?.value || '').trim();
+  const hl = (text) => keyword ? text.replace(new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), m => `<mark class="keyword-highlight">${m}</mark>`) : text;
   return `
-    <div class="timeline-item type-${r.type}">
+    <div class="timeline-item type-${r.type}${isOrgBreak ? ' org-break' : ''}" data-record-id="${r.id}">
       <div class="timeline-dot"></div>
       <div class="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
         <div class="flex items-center gap-2 mb-2 flex-wrap">
           <span class="type-badge ${type.cls}">${type.label}</span>
-          <span class="font-semibold text-gray-800 text-sm">${r.title}</span>
+          ${orgs.map(oid => { const o = getOrg(oid); return o ? `<span class="text-sm text-white bg-indigo-600 px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors" onclick="filterByOrg('${oid}')" title="点击筛选该机构"><i data-lucide="building-2" class="w-3 h-3"></i>${o.name}</span>` : ''; }).join('')}
+          <span class="font-semibold text-gray-800 text-sm">${hl(r.title)}</span>
           <button onclick="deleteRecord('${r.id}')" class="ml-auto text-gray-300 hover:text-red-500" title="删除"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
         </div>
-        <p class="text-sm text-gray-600 leading-relaxed mb-3">${r.content}</p>
+        <p class="text-sm text-gray-600 leading-relaxed mb-3">${hl(r.content)}</p>
         <div class="flex items-center gap-4 flex-wrap text-xs">
           <div class="flex items-center gap-1.5 text-gray-500"><i data-lucide="user" class="w-3.5 h-3.5"></i><span>我方：${myUser ? myUser.name + '（' + myUser.position + '）' : '未知'}</span></div>
           <div class="flex items-center gap-1.5 flex-wrap">
             <i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i>
             <span class="text-gray-400">甲方：</span>
-            ${persons.map(p => { const org = getOrg(p.orgId); return `<span class="tag-chip imp-${p.importance}" style="background:var(--ibg);color:var(--ic);border:1px solid var(--ibd)">${p.name}<span class="text-[10px] opacity-60">@${org ? org.name : ''}</span></span>`; }).join('')}
+            ${persons.map(p => `<span class="tag-chip imp-${p.importance} cursor-pointer hover:opacity-80 transition-opacity" style="background:var(--ibg);color:var(--ic);border:1px solid var(--ibd)" onclick="jumpToPerson('${p.id}')" title="点击查看人员详情">${p.name}</span>`).join('')}
           </div>
         </div>
       </div>
     </div>`;
+}
+
+// 点击机构名称跳转到机构人员页查看机构详情
+function jumpToOrg(orgId) {
+  selectedTreeNode = { type: 'org', id: orgId };
+  switchView('people');
+  setTimeout(() => {
+    collapsedNodes.delete(orgId);
+    DB.clientPersons.filter(p => p.orgId === orgId).map(p => p.id).forEach(pid => collapsedNodes.delete(pid));
+    renderOrgTree();
+    renderOrgDetail(orgId);
+    if (lucide) lucide.createIcons();
+  }, 50);
+}
+
+// 点击甲方人员跳转到机构人员页查看详情
+function jumpToPerson(personId) {
+  // 确保该人员所有上级节点都是展开状态
+  selectedTreeNode = { type: 'person', id: personId };
+  switchView('people');
+  // 展开该人员、其所属机构及所有上级节点
+  setTimeout(() => {
+    const p = getClientPerson(personId);
+    if (p) {
+      collapsedNodes.delete(p.orgId);
+      let pid = personId;
+      while (pid) {
+        collapsedNodes.delete(pid);
+        const pp = getClientPerson(pid);
+        pid = pp ? pp.parentId : null;
+      }
+    }
+    renderOrgTree();
+    if (lucide) lucide.createIcons();
+  }, 50);
+}
+
+// 点击机构标签筛选（时间线页 + 仪表盘）
+function filterByOrg(orgId) {
+  const tl = document.getElementById('filterOrg');
+  if (tl) tl.value = orgId;
+  renderTimeline();
+  if (lucide) lucide.createIcons();
+}
+
+function filterByOrgDash(orgId) {
+  const dash = document.getElementById('filterOrgDash');
+  if (dash) dash.value = orgId;
+  renderDashboardCalendar();
+  if (lucide) lucide.createIcons();
 }
 
 async function deleteRecord(id) {
@@ -756,29 +1089,38 @@ function renderRecordPage() {
   myUserSelect.innerHTML = '<option value="">请选择...</option>' + DB.myUsers.map(u => `<option value="${u.id}">${u.name}（${u.position}）</option>`).join('');
 
   selectedClientPersons.clear();
+  // 填充甲方机构下拉
+  const orgSelect = document.getElementById('recClientOrg');
+  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + DB.orgs.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  // 隐藏人员区域
+  document.getElementById('recClientPersonsContainer').classList.add('hidden');
+
+  updateTypeSelector();
+  if (lucide) lucide.createIcons();
+}
+
+// 选择机构后渲染该机构的人员
+function renderRecClientPersons() {
+  const orgId = document.getElementById('recClientOrg').value;
   const container = document.getElementById('recClientPersons');
-  if (DB.clientPersons.length === 0) {
-    container.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">暂无甲方人员，请先在"机构人员"中添加</div>';
+  const wrapper = document.getElementById('recClientPersonsContainer');
+
+  if (!orgId) {
+    wrapper.classList.add('hidden');
     return;
   }
 
-  container.innerHTML = DB.orgs.map(org => {
-    const persons = DB.clientPersons.filter(p => p.orgId === org.id);
-    if (!persons.length) return '';
-    return `
-      <div class="mb-3 last:mb-0">
-        <p class="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>${org.name}</p>
-        <div class="flex flex-wrap gap-2">
-          ${persons.map(p => `
-            <label class="checkbox-tag imp-${p.importance} border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5" data-person-id="${p.id}" onclick="togglePerson('${p.id}')">
-              <input type="checkbox" class="hidden" value="${p.id}">
-              <span class="imp-dot"></span><span>${p.name}</span><span class="text-xs text-gray-400">${p.position}</span>
-            </label>`).join('')}
-        </div>
-      </div>`;
-  }).join('');
-
-  updateTypeSelector();
+  selectedClientPersons.clear();
+  const persons = DB.clientPersons.filter(p => p.orgId === orgId);
+  if (persons.length === 0) {
+    container.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">该机构暂无人员</div>';
+  } else {
+    container.innerHTML = persons.map(p => `
+      <div class="checkbox-tag imp-${p.importance} border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5" data-person-id="${p.id}" onclick="togglePerson('${p.id}')">
+        <span class="imp-dot"></span><span>${p.name}</span><span class="text-xs text-gray-400">${p.position}</span>
+      </div>`).join('');
+  }
+  wrapper.classList.remove('hidden');
   if (lucide) lucide.createIcons();
 }
 
