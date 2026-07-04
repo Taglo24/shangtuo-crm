@@ -800,7 +800,7 @@ function renderPersonDetail(personId) {
           <button onclick="openPersonModal(null,'${p.id}')" class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 flex items-center gap-1"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>编辑</button>
           ${isArchived
             ? `<button onclick="restorePerson('${p.id}')" class="px-3 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs hover:bg-green-100 flex items-center gap-1"><i data-lucide="undo-2" class="w-3.5 h-3.5"></i>恢复</button>`
-            : `<button onclick="deletePerson('${p.id}')" class="px-3 py-1.5 bg-orange-50 text-orange-500 rounded-lg text-xs hover:bg-orange-100 flex items-center gap-1"><i data-lucide="archive" class="w-3.5 h-3.5"></i>归档</button>`
+            : `<button onclick="deletePerson('${p.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除</button>`
           }
         </div>
       </div>
