@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.1 - 机构编辑/删除 + 人员删除保留记录
+// v2.2 - 人员归档到"过往人员"分组 + 恢复功能
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -27,7 +27,7 @@ const TYPE_CONFIG = {
 // 字段映射：JS camelCase <-> Supabase snake_case
 const FIELD_MAP = {
   orgs: { orgId:'org_id', createdAt:'created_at' },
-  client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id' },
+  client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id', status:'status' },
   records: { myUserId:'my_user_id', clientPersonIds:'client_person_ids', createdAt:'created_at' },
 };
 
@@ -173,29 +173,29 @@ function initSampleData() {
       { id: 'my4', name: '刘婷', position: '项目经理' },
     ],
     clientPersons: [
-      { id: 'cp1', orgId: 'org1', name: '陈志远', position: '集团董事长', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****8888' },
-      { id: 'cp2', orgId: 'org1', name: '赵国强', position: '集团总裁', importance: 'S', parentId: 'cp1', myContactId: 'my1', phone: '139****6666' },
+      { id: 'cp1', orgId: 'org1', name: '陈志远', position: '集团董事长', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****8888', status: 'active' },
+      { id: 'cp2', orgId: 'org1', name: '赵国强', position: '集团总裁', importance: 'S', parentId: 'cp1', myContactId: 'my1', phone: '139****6666', status: 'active' },
       // 赵国强(总裁)下3个平级副总
-      { id: 'cp3', orgId: 'org1', name: '孙丽华', position: '副总裁·分管IT', importance: 'A', parentId: 'cp2', myContactId: 'my2', phone: '137****5555' },
-      { id: 'cp6', orgId: 'org1', name: '郑伟', position: '副总裁·分管采购', importance: 'B', parentId: 'cp2', myContactId: 'my2', phone: '133****1111' },
-      { id: 'cp11', orgId: 'org1', name: '钱永涛', position: '副总裁·分管财务', importance: 'A', parentId: 'cp2', myContactId: 'my1', phone: '131****2222' },
+      { id: 'cp3', orgId: 'org1', name: '孙丽华', position: '副总裁·分管IT', importance: 'A', parentId: 'cp2', myContactId: 'my2', phone: '137****5555', status: 'active' },
+      { id: 'cp6', orgId: 'org1', name: '郑伟', position: '副总裁·分管采购', importance: 'B', parentId: 'cp2', myContactId: 'my2', phone: '133****1111', status: 'active' },
+      { id: 'cp11', orgId: 'org1', name: '钱永涛', position: '副总裁·分管财务', importance: 'A', parentId: 'cp2', myContactId: 'my1', phone: '131****2222', status: 'active' },
       // 孙丽华(IT副总)下2个平级总监
-      { id: 'cp4', orgId: 'org1', name: '周建明', position: '信息技术部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '136****3333' },
-      { id: 'cp12', orgId: 'org1', name: '冯雅琴', position: '数据运营部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '132****5555' },
+      { id: 'cp4', orgId: 'org1', name: '周建明', position: '信息技术部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '136****3333', status: 'active' },
+      { id: 'cp12', orgId: 'org1', name: '冯雅琴', position: '数据运营部总监', importance: 'B', parentId: 'cp3', myContactId: 'my3', phone: '132****5555', status: 'active' },
       // 周建明(IT总监)下2个平级经理
-      { id: 'cp5', orgId: 'org1', name: '吴小燕', position: '信息技术部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '135****2222' },
-      { id: 'cp13', orgId: 'org1', name: '许文斌', position: '信息安全部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '134****6666' },
+      { id: 'cp5', orgId: 'org1', name: '吴小燕', position: '信息技术部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '135****2222', status: 'active' },
+      { id: 'cp13', orgId: 'org1', name: '许文斌', position: '信息安全部经理', importance: 'C', parentId: 'cp4', myContactId: 'my3', phone: '134****6666', status: 'active' },
       // 锐捷科技
-      { id: 'cp7', orgId: 'org2', name: '黄晓峰', position: 'CEO·创始人', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****9999' },
+      { id: 'cp7', orgId: 'org2', name: '黄晓峰', position: 'CEO·创始人', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****9999', status: 'active' },
       // 黄晓峰(CEO)下2个平级C级
-      { id: 'cp8', orgId: 'org2', name: '林婉清', position: 'CTO', importance: 'A', parentId: 'cp7', myContactId: 'my3', phone: '139****7777' },
-      { id: 'cp14', orgId: 'org2', name: '秦朗', position: 'CFO', importance: 'A', parentId: 'cp7', myContactId: 'my1', phone: '137****3333' },
+      { id: 'cp8', orgId: 'org2', name: '林婉清', position: 'CTO', importance: 'A', parentId: 'cp7', myContactId: 'my3', phone: '139****7777', status: 'active' },
+      { id: 'cp14', orgId: 'org2', name: '秦朗', position: 'CFO', importance: 'A', parentId: 'cp7', myContactId: 'my1', phone: '137****3333', status: 'active' },
       // 林婉清(CTO)下2个平级总监
-      { id: 'cp9', orgId: 'org2', name: '高磊', position: '产品总监', importance: 'B', parentId: 'cp8', myContactId: 'my4', phone: '136****4444' },
-      { id: 'cp15', orgId: 'org2', name: '沈雨欣', position: '研发总监', importance: 'B', parentId: 'cp8', myContactId: 'my3', phone: '135****7777' },
+      { id: 'cp9', orgId: 'org2', name: '高磊', position: '产品总监', importance: 'B', parentId: 'cp8', myContactId: 'my4', phone: '136****4444', status: 'active' },
+      { id: 'cp15', orgId: 'org2', name: '沈雨欣', position: '研发总监', importance: 'B', parentId: 'cp8', myContactId: 'my3', phone: '135****7777', status: 'active' },
       // 高磊(产品总监)下2个平级
-      { id: 'cp10', orgId: 'org2', name: '马晓宇', position: '研发主管', importance: 'C', parentId: 'cp9', myContactId: 'my3', phone: '135****0000' },
-      { id: 'cp16', orgId: 'org2', name: '韩雪', position: '产品经理', importance: 'C', parentId: 'cp9', myContactId: 'my4', phone: '138****4444' },
+      { id: 'cp10', orgId: 'org2', name: '马晓宇', position: '研发主管', importance: 'C', parentId: 'cp9', myContactId: 'my3', phone: '135****0000', status: 'active' },
+      { id: 'cp16', orgId: 'org2', name: '韩雪', position: '产品经理', importance: 'C', parentId: 'cp9', myContactId: 'my4', phone: '138****4444', status: 'active' },
     ],
     records: [
       { id: 'r1', date: getDateOffset(-1), type: 'visit', title: '拜访中诚集团·年度合作方案沟通', content: '与陈董、赵总裁就年度数字化合作方案进行深入沟通。陈董对智能风控系统表示高度认可，要求信息技术部配合推进方案细化。下一步：两周内提交详细方案。', myUserId: 'my1', clientPersonIds: ['cp1', 'cp2', 'cp3'], createdAt: now - 86400000 },
@@ -221,15 +221,28 @@ async function loadData() {
   // 尝试从云端加载
   if (Cloud.enabled) {
     const ok = await loadFromCloud();
-    if (ok) return;
+    if (ok) {
+      migrateData();
+      return;
+    }
   }
   // 降级到本地
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     DB = JSON.parse(saved);
+    migrateData();
   } else {
     initSampleData();
   }
+}
+
+function migrateData() {
+  // 兼容旧数据：给没有 status 的 person 补充默认值
+  let migrated = false;
+  DB.clientPersons.forEach(p => {
+    if (!p.status) { p.status = 'active'; migrated = true; }
+  });
+  if (migrated) saveLocal();
 }
 
 async function resetData() {
@@ -248,8 +261,10 @@ function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).sl
 function getOrg(id) { return DB.orgs.find(o => o.id === id); }
 function getClientPerson(id) { return DB.clientPersons.find(p => p.id === id); }
 function getMyUser(id) { return DB.myUsers.find(u => u.id === id); }
-function getChildren(parentId) { return DB.clientPersons.filter(p => p.parentId === parentId); }
-function getRootPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && !p.parentId); }
+function getChildren(parentId) { return DB.clientPersons.filter(p => p.parentId === parentId && p.status !== 'archived'); }
+function getRootPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && !p.parentId && p.status !== 'archived'); }
+function getActivePersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived'); }
+function getArchivedPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status === 'archived'); }
 
 function getDateOffset(days) {
   const d = new Date();
@@ -339,7 +354,7 @@ function renderDashboard() {
   const orgsContainer = document.getElementById('dashboardOrgs');
   if (orgsContainer) {
     orgsContainer.innerHTML = DB.orgs.length ? DB.orgs.map(o => {
-      const persons = DB.clientPersons.filter(p => p.orgId === o.id);
+      const persons = getActivePersons(o.id);
       const records = DB.records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === o.id; }));
       const keyCount = persons.filter(p => p.importance === 'S' || p.importance === 'A').length;
       return `
@@ -521,10 +536,11 @@ function clickCalDay(dateStr) {
 // 机构人员页
 // =====================================================
 function renderPeoplePage() {
-  // 默认折叠所有人名节点 + 机构节点（只保留机构名称）
+  // 默认折叠所有人名节点 + 机构节点 + 过往人员分组
   collapsedNodes = new Set([
     ...DB.clientPersons.filter(p => getChildren(p.id).length > 0).map(p => p.id),
-    ...DB.orgs.map(o => o.id)
+    ...DB.orgs.map(o => o.id),
+    ...DB.orgs.filter(o => getArchivedPersons(o.id).length > 0).map(o => 'archived_' + o.id)
   ]);
 
   renderOrgTree();
@@ -557,10 +573,12 @@ function toggleOrgCollapse(orgId) {
     // 折叠→展开：机构+所有人员都展开
     collapsedNodes.delete(orgId);
     personIds.forEach(pid => collapsedNodes.delete(pid));
+    collapsedNodes.delete('archived_' + orgId);
   } else {
-    // 展开→折叠：机构+所有人员都折叠
+    // 展开→折叠：机构+所有人员+过往人员都折叠
     collapsedNodes.add(orgId);
     personIds.forEach(pid => collapsedNodes.add(pid));
+    collapsedNodes.add('archived_' + orgId);
   }
 }
 
@@ -569,7 +587,7 @@ function togglePersonCollapse(personId) {
   // 获取该人员下的所有子孙节点
   function getDescendants(id) {
     const ids = [];
-    const children = DB.clientPersons.filter(p => p.parentId === id);
+    const children = DB.clientPersons.filter(p => p.parentId === id && p.status !== 'archived');
     for (const c of children) {
       ids.push(c.id);
       ids.push(...getDescendants(c.id));
@@ -593,7 +611,8 @@ function renderOrgTree() {
     return;
   }
   container.innerHTML = DB.orgs.map(org => {
-    const persons = DB.clientPersons.filter(p => p.orgId === org.id);
+    const activePersons = getActivePersons(org.id);
+    const archivedPersons = getArchivedPersons(org.id);
     const isSelected = selectedTreeNode && selectedTreeNode.type === 'org' && selectedTreeNode.id === org.id;
     const collapsed = isCollapsed(org.id);
     return `
@@ -602,15 +621,40 @@ function renderOrgTree() {
           <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); toggleOrgCollapse('${org.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>
           <i data-lucide="building-2" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
           <span class="text-sm font-semibold text-gray-700">${org.name}</span>
-          <span class="text-xs text-gray-400 ml-auto">${persons.length}人</span>
+          <span class="text-xs text-gray-400 ml-auto">${activePersons.length}人${archivedPersons.length ? ' · ' + archivedPersons.length + '归档' : ''}</span>
         </div>
-        ${!collapsed ? `<div class="tree-children">${renderPersonTree(org.id, null)}</div>` : ''}
+        ${!collapsed ? `<div class="tree-children">
+          ${renderPersonTree(org.id, null)}
+          ${renderArchivedSection(org.id)}
+        </div>` : ''}
       </div>`;
   }).join('');
 }
 
+function renderArchivedSection(orgId) {
+  const archivedPersons = getArchivedPersons(orgId);
+  if (archivedPersons.length === 0) return '';
+  const collapsed = isCollapsed('archived_' + orgId);
+  return `
+    <div class="tree-node">
+      <div class="tree-row p-2 flex items-center gap-2" onclick="event.stopPropagation(); toggleCollapse('archived_${orgId}'); renderOrgTree(); if(lucide)lucide.createIcons();">
+        <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer"></i>
+        <i data-lucide="archive" class="w-3.5 h-3.5 text-gray-400 flex-shrink-0"></i>
+        <span class="text-sm text-gray-500">过往人员</span>
+        <span class="text-xs text-gray-400 ml-auto">${archivedPersons.length}人</span>
+      </div>
+      ${!collapsed ? `<div class="tree-children">${archivedPersons.map(p => `
+        <div class="tree-row p-2 pl-10 flex items-center gap-2 ${selectedTreeNode && selectedTreeNode.type === 'person' && selectedTreeNode.id === p.id ? 'selected' : ''}" onclick="selectNode('person','${p.id}')">
+          <span class="imp-dot imp-${p.importance} flex-shrink-0" style="opacity:0.5"></span>
+          <span class="text-sm text-gray-500">${p.name}</span>
+          <span class="text-xs text-gray-400 truncate hidden sm:inline">${p.position}</span>
+          <span class="text-xs text-orange-400 ml-auto">已归档</span>
+        </div>`).join('')}</div>` : ''}
+    </div>`;
+}
+
 function renderPersonTree(orgId, parentId) {
-  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.parentId === parentId);
+  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.parentId === parentId && p.status !== 'archived');
   if (persons.length === 0) return '';
   return persons.map(p => {
     const children = getChildren(p.id);
@@ -639,9 +683,10 @@ function selectNode(type, id) {
   if (type === 'org') {
     // 点击已展开的机构 → 折叠；点击折叠的机构 → 展开
     if (!isCollapsed(id)) {
-      // 已展开 → 折叠（机构本身 + 所有人员）
+      // 已展开 → 折叠（机构本身 + 所有人员 + 过往人员）
       collapsedNodes.add(id);
       DB.clientPersons.filter(p => p.orgId === id).map(p => p.id).forEach(pid => collapsedNodes.add(pid));
+      collapsedNodes.add('archived_' + id);
       selectedTreeNode = null;
       document.getElementById('personDetailPanel').innerHTML = `
         <div class="empty-state">
@@ -662,8 +707,10 @@ function selectNode(type, id) {
 function renderOrgDetail(orgId) {
   const org = getOrg(orgId);
   if (!org) return;
-  const persons = DB.clientPersons.filter(p => p.orgId === orgId);
-  const records = DB.records.filter(r => r.clientPersonIds.some(id => getClientPerson(id)?.orgId === orgId));
+  const activePersons = getActivePersons(orgId);
+  const archivedPersons = getArchivedPersons(orgId);
+  const allPersonIds = DB.clientPersons.filter(p => p.orgId === orgId).map(p => p.id);
+  const records = DB.records.filter(r => r.clientPersonIds.some(id => allPersonIds.includes(id)));
 
   document.getElementById('personDetailPanel').innerHTML = `
     <div class="flex items-center justify-between mb-5">
@@ -673,7 +720,7 @@ function renderOrgDetail(orgId) {
         </div>
         <div>
           <h3 class="text-lg font-bold text-gray-800">${org.name}</h3>
-          <p class="text-sm text-gray-400">${org.industry || '未设置行业'} · ${persons.length}位人员 · ${records.length}条沟通记录</p>
+          <p class="text-sm text-gray-400">${org.industry || '未设置行业'} · ${activePersons.length}位在职${archivedPersons.length ? ' · ' + archivedPersons.length + '位归档' : ''} · ${records.length}条沟通记录</p>
         </div>
       </div>
       <div class="flex gap-2">
@@ -683,22 +730,30 @@ function renderOrgDetail(orgId) {
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3 detail-card-grid">
-      ${persons.map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无人员</p></div>'}
-    </div>`;
+      ${activePersons.map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无在职人员</p></div>'}
+    </div>
+    ${archivedPersons.length ? `
+      <h4 class="font-bold text-gray-500 text-sm mt-5 mb-3 flex items-center gap-2"><i data-lucide="archive" class="w-4 h-4"></i>过往人员（${archivedPersons.length}）</h4>
+      <div class="grid grid-cols-2 gap-3 detail-card-grid">
+        ${archivedPersons.map(p => renderPersonCard(p, true)).join('')}
+      </div>
+    ` : ''}`;
   if (lucide) lucide.createIcons();
 }
 
-function renderPersonCard(p) {
+function renderPersonCard(p, isArchived) {
   const myUser = getMyUser(p.myContactId);
   const children = getChildren(p.id);
   const parent = p.parentId ? getClientPerson(p.parentId) : null;
+  const cardClass = isArchived ? 'opacity-60 grayscale' : '';
   return `
-    <div class="imp-${p.importance} person-card border border-gray-200 rounded-xl p-4 card-hover" onclick="selectNode('person','${p.id}')">
+    <div class="imp-${p.importance} person-card border border-gray-200 rounded-xl p-4 card-hover ${cardClass}" onclick="selectNode('person','${p.id}')">
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:${IMPORTANCE_CONFIG[p.importance].color}">${p.name[0]}</div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="font-semibold text-gray-800 text-sm">${p.name}</span>
+            ${isArchived ? '<span class="text-xs text-orange-500 border border-orange-300 rounded px-1.5 py-0.5">已归档</span>' : ''}
             <span class="imp-badge">${IMPORTANCE_CONFIG[p.importance].short}</span>
           </div>
           <p class="text-xs text-gray-500 mt-0.5">${p.position}</p>
@@ -716,6 +771,7 @@ function renderPersonCard(p) {
 function renderPersonDetail(personId) {
   const p = getClientPerson(personId);
   if (!p) return;
+  const isArchived = p.status === 'archived';
   const org = getOrg(p.orgId);
   const myUser = getMyUser(p.myContactId);
   const parent = p.parentId ? getClientPerson(p.parentId) : null;
@@ -723,12 +779,13 @@ function renderPersonDetail(personId) {
   const records = DB.records.filter(r => r.clientPersonIds.includes(personId));
 
   document.getElementById('personDetailPanel').innerHTML = `
-    <div class="imp-${p.importance} person-card border border-gray-200 rounded-xl p-5 mb-5">
+    <div class="imp-${p.importance} person-card border border-gray-200 rounded-xl p-5 mb-5 ${isArchived ? 'opacity-60 grayscale' : ''}">
       <div class="flex items-start gap-4">
         <div class="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold flex-shrink-0" style="background:${IMPORTANCE_CONFIG[p.importance].color}">${p.name[0]}</div>
         <div class="flex-1">
           <div class="flex items-center gap-2 flex-wrap">
             <h3 class="text-xl font-bold text-gray-800">${p.name}</h3>
+            ${isArchived ? '<span class="text-sm text-orange-500 border border-orange-300 rounded px-2 py-0.5 font-medium">已归档</span>' : ''}
             <span class="imp-badge">${IMPORTANCE_CONFIG[p.importance].label}</span>
           </div>
           <p class="text-sm text-gray-500 mt-1">${p.position} · ${org ? org.name : ''}</p>
@@ -741,7 +798,10 @@ function renderPersonDetail(personId) {
         </div>
         <div class="flex flex-col gap-2 flex-shrink-0">
           <button onclick="openPersonModal(null,'${p.id}')" class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 flex items-center gap-1"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>编辑</button>
-          <button onclick="deletePerson('${p.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除</button>
+          ${isArchived
+            ? `<button onclick="restorePerson('${p.id}')" class="px-3 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs hover:bg-green-100 flex items-center gap-1"><i data-lucide="undo-2" class="w-3.5 h-3.5"></i>恢复</button>`
+            : `<button onclick="deletePerson('${p.id}')" class="px-3 py-1.5 bg-orange-50 text-orange-500 rounded-lg text-xs hover:bg-orange-100 flex items-center gap-1"><i data-lucide="archive" class="w-3.5 h-3.5"></i>归档</button>`
+          }
         </div>
       </div>
     </div>
@@ -905,7 +965,7 @@ function openPersonModal(orgId, personId) {
 }
 
 function updateParentOptions(orgId, excludeId) {
-  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.id !== excludeId);
+  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.id !== excludeId && p.status !== 'archived');
   return persons.map(p => `<option value="${p.id}">${p.name}（${p.position}）</option>`).join('');
 }
 
@@ -928,7 +988,7 @@ async function savePerson(personId) {
     const p = getClientPerson(personId);
     if (p) { Object.assign(p, { orgId, name, position, importance, parentId, myContactId, phone }); await syncToCloud('client_persons', p); }
   } else {
-    const p = { id: uid(), orgId, name, position, importance, parentId, myContactId, phone };
+    const p = { id: uid(), orgId, name, position, importance, parentId, myContactId, phone, status: 'active' };
     DB.clientPersons.push(p);
     await syncToCloud('client_persons', p);
   }
@@ -939,14 +999,27 @@ async function savePerson(personId) {
 }
 
 async function deletePerson(personId) {
-  if (!confirm('确定删除该人员吗？过往沟通记录将被保留，关联的下级人员将变为顶层。')) return;
+  const p = getClientPerson(personId);
+  if (!p) return;
+  if (!confirm(`确定将「${p.name}」归档到"过往人员"吗？\n\n归档后：\n· 人员信息保留在机构下的"过往人员"分组中\n· 过往沟通记录将完整保留\n· 关联的下级人员将变为顶层`)) return;
   DB.clientPersons.filter(p => p.parentId === personId).forEach(p => p.parentId = null);
-  DB.clientPersons = DB.clientPersons.filter(p => p.id !== personId);
+  p.status = 'archived';
   selectedTreeNode = null;
   saveLocal();
-  await removeFromCloud('client_persons', personId);
+  await syncToCloud('client_persons', p);
   renderPeoplePage();
-  showToast('人员已删除（沟通记录已保留）');
+  showToast('人员已归档至「过往人员」');
+}
+
+async function restorePerson(personId) {
+  const p = getClientPerson(personId);
+  if (!p) return;
+  p.status = 'active';
+  selectedTreeNode = null;
+  saveLocal();
+  await syncToCloud('client_persons', p);
+  renderPeoplePage();
+  showToast('人员已恢复为在职状态');
 }
 
 // =====================================================
@@ -962,7 +1035,7 @@ function renderTimeline() {
   const currentPerson = filterPerson.value;
   if (selectedOrg) {
     const personOpts = DB.clientPersons.filter(p => p.orgId === selectedOrg);
-    filterPerson.innerHTML = '<option value="">全部甲方人员</option>' + personOpts.map(p => `<option value="${p.id}" ${p.id === currentPerson ? 'selected' : ''}>${p.name}（${p.position}）</option>`).join('');
+    filterPerson.innerHTML = '<option value="">全部甲方人员</option>' + personOpts.map(p => `<option value="${p.id}" ${p.id === currentPerson ? 'selected' : ''}>${p.name}（${p.position}）${p.status === 'archived' ? '[归档]' : ''}</option>`).join('');
     filterPerson.disabled = false;
     filterPerson.className = 'border border-gray-300 rounded-lg px-3 py-1.5 text-sm';
   } else {
@@ -1164,7 +1237,7 @@ function renderRecClientPersons() {
   }
 
   selectedClientPersons.clear();
-  const persons = DB.clientPersons.filter(p => p.orgId === orgId);
+  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived');
   if (persons.length === 0) {
     container.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">该机构暂无人员</div>';
   } else {
