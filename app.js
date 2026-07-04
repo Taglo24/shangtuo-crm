@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.2 - 人员归档到"过往人员"分组 + 恢复功能
+// v2.3 - 人员拖拽排序 + 跨机构移动
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -34,6 +34,7 @@ const FIELD_MAP = {
 let DB = { orgs: [], clientPersons: [], myUsers: [], records: [] };
 let selectedTreeNode = null;
 let selectedClientPersons = new Set();
+let dragState = null; // { personId, sourceOrgId }
 
 // =====================================================
 // 云端同步层 (Supabase)
@@ -617,7 +618,11 @@ function renderOrgTree() {
     const collapsed = isCollapsed(org.id);
     return `
       <div class="tree-node">
-        <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2" onclick="selectNode('org','${org.id}')">
+        <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2"
+             ondragover="dragOverNode(event, 'org', '${org.id}')"
+             ondragleave="dragLeaveNode(event)"
+             ondrop="dropOnNode(event, 'org', '${org.id}')"
+             onclick="selectNode('org','${org.id}')">
           <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); toggleOrgCollapse('${org.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>
           <i data-lucide="building-2" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
           <span class="text-sm font-semibold text-gray-700">${org.name}</span>
@@ -663,10 +668,17 @@ function renderPersonTree(orgId, parentId) {
     const hasChildren = children.length > 0;
     return `
       <div class="tree-node">
-        <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2" onclick="selectNode('person','${p.id}')">
+        <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2"
+             draggable="true"
+             ondragstart="dragStartPerson(event, '${p.id}')"
+             ondragend="dragEnd(event)"
+             ondragover="dragOverNode(event, 'person', '${p.id}')"
+             ondragleave="dragLeaveNode(event)"
+             ondrop="dropOnNode(event, 'person', '${p.id}')"
+             onclick="selectNode('person','${p.id}')">
           ${hasChildren
             ? `<i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); togglePersonCollapse('${p.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>`
-            : `<span class="w-4 flex-shrink-0"></span>`
+            : `<i data-lucide="grip-vertical" class="w-4 h-4 text-gray-300 flex-shrink-0 cursor-grab" onclick="event.stopPropagation()"></i>`
           }
           <span class="imp-dot imp-${p.importance} flex-shrink-0"></span>
           <span class="text-sm text-gray-700">${p.name}</span>
@@ -678,6 +690,127 @@ function renderPersonTree(orgId, parentId) {
   }).join('');
 }
 
+// =====================================================
+// 拖拽排序
+// =====================================================
+function isDescendant(personId, ancestorId) {
+  let pid = personId;
+  while (pid) {
+    const p = getClientPerson(pid);
+    if (!p || !p.parentId) return false;
+    if (p.parentId === ancestorId) return true;
+    pid = p.parentId;
+  }
+  return false;
+}
+
+function dragStartPerson(e, personId) {
+  const p = getClientPerson(personId);
+  if (!p) return;
+  dragState = { personId, sourceOrgId: p.orgId };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', personId);
+  // 自定义拖拽幽灵
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.textContent = p.name + ' · ' + p.position;
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 10, 10);
+  setTimeout(() => ghost.remove(), 0);
+  // 标记源节点
+  setTimeout(() => {
+    const row = e.target.closest('.tree-row');
+    if (row) row.classList.add('drag-source');
+  }, 0);
+}
+
+function dragEnd(e) {
+  // 清除所有高亮
+  document.querySelectorAll('.tree-row').forEach(r => {
+    r.classList.remove('drag-over', 'drag-over-invalid', 'drag-source');
+  });
+  dragState = null;
+}
+
+function dragOverNode(e, targetType, targetId) {
+  e.preventDefault();
+  if (!dragState) return;
+  const row = e.currentTarget;
+  // 判断是否合法
+  let valid = true;
+  if (targetType === 'person') {
+    // 不能拖到自己或自己的子孙
+    if (targetId === dragState.personId || isDescendant(targetId, dragState.personId)) {
+      valid = false;
+    }
+    // 不能拖到已归档人员
+    const tp = getClientPerson(targetId);
+    if (tp && tp.status === 'archived') valid = false;
+  }
+  // 不能拖到源机构的相同父级（即无变化）
+  if (valid && targetType === 'person') {
+    const tp = getClientPerson(targetId);
+    const sp = getClientPerson(dragState.personId);
+    if (tp && sp && sp.parentId === targetId && sp.orgId === tp.orgId) valid = false;
+  }
+  if (valid && targetType === 'org') {
+    const sp = getClientPerson(dragState.personId);
+    if (sp && sp.orgId === targetId && sp.parentId === null) valid = false;
+  }
+
+  e.dataTransfer.dropEffect = valid ? 'move' : 'none';
+  row.classList.remove('drag-over', 'drag-over-invalid');
+  row.classList.add(valid ? 'drag-over' : 'drag-over-invalid');
+}
+
+function dragLeaveNode(e) {
+  e.currentTarget.classList.remove('drag-over', 'drag-over-invalid');
+}
+
+async function dropOnNode(e, targetType, targetId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over', 'drag-over-invalid');
+  document.querySelectorAll('.tree-row').forEach(r => r.classList.remove('drag-source'));
+  if (!dragState) return;
+
+  const sp = getClientPerson(dragState.personId);
+  if (!sp) { dragState = null; return; }
+
+  let valid = true;
+  if (targetType === 'person') {
+    if (targetId === dragState.personId || isDescendant(targetId, dragState.personId)) valid = false;
+    const tp = getClientPerson(targetId);
+    if (tp && tp.status === 'archived') valid = false;
+    if (sp.parentId === targetId && sp.orgId === (tp ? tp.orgId : sp.orgId)) valid = false;
+  }
+  if (targetType === 'org') {
+    if (sp.orgId === targetId && sp.parentId === null) valid = false;
+  }
+
+  if (!valid) { dragState = null; return; }
+
+  // 执行移动
+  if (targetType === 'person') {
+    const tp = getClientPerson(targetId);
+    sp.parentId = targetId;
+    sp.orgId = tp.orgId;
+  } else if (targetType === 'org') {
+    sp.parentId = null;
+    sp.orgId = targetId;
+  }
+
+  saveLocal();
+  await syncToCloud('client_persons', sp);
+  selectedTreeNode = null;
+  renderOrgTree();
+  if (lucide) lucide.createIcons();
+  showToast('人员位置已调整');
+  dragState = null;
+}
+
+// =====================================================
+// 机构人员页
+// =====================================================
 function selectNode(type, id) {
   selectedTreeNode = { type, id };
   if (type === 'org') {
