@@ -675,9 +675,11 @@ function renderOrgDetail(orgId) {
           <p class="text-sm text-gray-400">${org.industry || '未设置行业'} · ${persons.length}位人员 · ${records.length}条沟通记录</p>
         </div>
       </div>
-      <button onclick="openPersonModal('${orgId}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 flex items-center gap-1 flex-shrink-0">
-        <i data-lucide="user-plus" class="w-4 h-4"></i>添加人员
-      </button>
+      <div class="flex gap-2">
+        <button onclick="openOrgEditModal('${orgId}')" class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 flex items-center gap-1"><i data-lucide="pencil" class="w-4 h-4"></i>编辑</button>
+        <button onclick="deleteOrg('${orgId}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-sm hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-4 h-4"></i>删除</button>
+        <button onclick="openPersonModal('${orgId}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 flex items-center gap-1"><i data-lucide="user-plus" class="w-4 h-4"></i>添加人员</button>
+      </div>
     </div>
     <div class="grid grid-cols-2 gap-3 detail-card-grid">
       ${persons.map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无人员</p></div>'}
@@ -802,6 +804,58 @@ async function saveOrg() {
   showToast('机构添加成功');
 }
 
+// 编辑机构
+function openOrgEditModal(orgId) {
+  const org = getOrg(orgId);
+  if (!org) return;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>编辑机构</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">机构名称 <span class="text-red-500">*</span></label>
+          <input type="text" id="orgName" value="${org.name}" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">所属行业</label>
+          <input type="text" id="orgIndustry" value="${org.industry || ''}" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="saveOrgEdit('${orgId}')" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存修改</button>
+        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+async function saveOrgEdit(orgId) {
+  const org = getOrg(orgId);
+  if (!org) return;
+  const name = document.getElementById('orgName').value.trim();
+  if (!name) { showToast('请输入机构名称'); return; }
+  org.name = name;
+  org.industry = document.getElementById('orgIndustry').value.trim();
+  saveLocal();
+  await syncToCloud('orgs', org);
+  closeModal();
+  renderPeoplePage();
+  showToast('机构修改成功');
+}
+
+async function deleteOrg(orgId) {
+  if (!confirm('确定删除该机构吗？过往沟通记录将被保留，机构下所有人员也将被删除。')) return;
+  // 删除该机构下的所有人员
+  const personIds = DB.clientPersons.filter(p => p.orgId === orgId).map(p => p.id);
+  DB.clientPersons = DB.clientPersons.filter(p => p.orgId !== orgId);
+  DB.orgs = DB.orgs.filter(o => o.id !== orgId);
+  selectedTreeNode = null;
+  saveLocal();
+  // 同步到云端
+  await removeFromCloud('orgs', orgId);
+  for (const pid of personIds) await removeFromCloud('client_persons', pid);
+  renderPeoplePage();
+  showToast('机构已删除（沟通记录已保留）');
+}
+
 // =====================================================
 // 添加/编辑人员
 // =====================================================
@@ -884,16 +938,14 @@ async function savePerson(personId) {
 }
 
 async function deletePerson(personId) {
-  if (!confirm('确定删除该人员吗？关联的下级人员将变为顶层，相关沟通记录中的该人员引用将被移除。')) return;
+  if (!confirm('确定删除该人员吗？过往沟通记录将被保留，关联的下级人员将变为顶层。')) return;
   DB.clientPersons.filter(p => p.parentId === personId).forEach(p => p.parentId = null);
-  DB.records.forEach(r => { r.clientPersonIds = r.clientPersonIds.filter(id => id !== personId); });
-  DB.records = DB.records.filter(r => r.clientPersonIds.length > 0);
   DB.clientPersons = DB.clientPersons.filter(p => p.id !== personId);
   selectedTreeNode = null;
   saveLocal();
   await removeFromCloud('client_persons', personId);
   renderPeoplePage();
-  showToast('人员已删除');
+  showToast('人员已删除（沟通记录已保留）');
 }
 
 // =====================================================
