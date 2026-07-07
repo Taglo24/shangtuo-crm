@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.5.4 - 修复对接人必填校验 + 重要性排序
+// v2.6 - 机构详情链接功能
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -26,7 +26,7 @@ const TYPE_CONFIG = {
 
 // 字段映射：JS camelCase <-> Supabase snake_case
 const FIELD_MAP = {
-  orgs: { orgId:'org_id', createdAt:'created_at' },
+  orgs: { orgId:'org_id', createdAt:'created_at', detailUrl:'detail_url' },
   client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id', status:'status' },
   my_users: { status:'status' },
   records: { myUserId:'my_user_id', clientPersonIds:'client_person_ids', createdAt:'created_at' },
@@ -366,17 +366,21 @@ function renderDashboard() {
       const records = DB.records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === o.id; }));
       const keyCount = persons.filter(p => p.importance === 'S' || p.importance === 'A').length;
       return `
-        <div class="border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all card-hover" onclick="dashFilterByOrg('${o.id}')" title="点击筛选该机构沟通记录">
+        <div class="border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition-all card-hover">
           <div class="flex items-center gap-3 mb-3">
-            <div class="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">${o.name[0]}</div>
+            <div class="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 cursor-pointer hover:bg-indigo-700" onclick="dashFilterByOrg('${o.id}')" title="点击筛选该机构沟通记录">${o.name[0]}</div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-bold text-gray-800 text-sm">${o.name}</span>
+                <span class="font-bold text-gray-800 text-sm cursor-pointer hover:text-indigo-600" onclick="dashFilterByOrg('${o.id}')">${o.name}</span>
               </div>
               <p class="text-xs text-gray-400 mt-0.5">${o.industry || '未设置行业'}</p>
             </div>
+            ${o.detailUrl
+              ? `<button onclick="event.stopPropagation(); window.open('${o.detailUrl}','_blank')" class="px-2.5 py-1 bg-blue-50 text-blue-500 rounded-lg text-xs font-medium hover:bg-blue-100 flex items-center gap-1 flex-shrink-0"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
+              : `<button onclick="event.stopPropagation(); openDetailUrlConfig('${o.id}')" class="px-2.5 py-1 bg-gray-50 text-gray-400 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-100 flex items-center gap-1 flex-shrink-0"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
+            }
           </div>
-          <div class="flex items-center gap-4 text-xs">
+          <div class="flex items-center gap-4 text-xs cursor-pointer" onclick="dashFilterByOrg('${o.id}')">
             <div class="flex items-center gap-1 text-gray-500"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${persons.length}人</span></div>
             <div class="flex items-center gap-1 text-gray-500"><i data-lucide="star" class="w-3.5 h-3.5 text-orange-400"></i><span>核心${keyCount}人</span></div>
             <div class="flex items-center gap-1 text-gray-500"><i data-lucide="message-square" class="w-3.5 h-3.5"></i><span>${records.length}条沟通</span></div>
@@ -1149,6 +1153,8 @@ function openOrgEditModal(orgId) {
           <input type="text" id="orgName" value="${org.name}" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
         <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">所属行业</label>
           <input type="text" id="orgIndustry" value="${org.industry || ''}" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">详情链接（腾讯文档等）</label>
+          <input type="url" id="orgDetailUrl" value="${org.detailUrl || ''}" placeholder="粘贴腾讯文档/飞书文档链接..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
       </div>
       <div class="flex gap-3 mt-6">
         <button onclick="saveOrgEdit('${orgId}')" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存修改</button>
@@ -1167,11 +1173,45 @@ async function saveOrgEdit(orgId) {
   if (!name) { showToast('请输入机构名称'); return; }
   org.name = name;
   org.industry = document.getElementById('orgIndustry').value.trim();
+  org.detailUrl = document.getElementById('orgDetailUrl').value.trim();
   saveLocal();
   await syncToCloud('orgs', org);
   closeModal();
   renderPeoplePage();
   showToast('机构修改成功');
+}
+
+// 点击详情按钮但未配置链接 → 弹出配置弹窗
+function openDetailUrlConfig(orgId) {
+  const org = getOrg(orgId);
+  if (!org) return;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="external-link" class="w-5 h-5 text-blue-500"></i>配置详情链接</h3>
+      <p class="text-xs text-gray-400 mb-4">为「<span class="font-semibold text-gray-700">${org.name}</span>」配置腾讯文档等外部详情页链接</p>
+      <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">详情链接</label>
+        <input type="url" id="configDetailUrl" value="${org.detailUrl || ''}" placeholder="https://docs.qq.com/doc/..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="saveDetailUrlConfig('${orgId}')" class="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600">保存</button>
+        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+async function saveDetailUrlConfig(orgId) {
+  const org = getOrg(orgId);
+  if (!org) return;
+  const url = document.getElementById('configDetailUrl').value.trim();
+  org.detailUrl = url || undefined;
+  saveLocal();
+  await syncToCloud('orgs', org);
+  closeModal();
+  renderDashboard();
+  if (url) { window.open(url, '_blank'); }
+  else { showToast('已清除详情链接'); }
 }
 
 async function deleteOrg(orgId) {
