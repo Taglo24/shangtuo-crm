@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.3 - 人员拖拽排序 + 跨机构移动
+// v2.4 - 我方人员新增/删除/归档
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -28,6 +28,7 @@ const TYPE_CONFIG = {
 const FIELD_MAP = {
   orgs: { orgId:'org_id', createdAt:'created_at' },
   client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id', status:'status' },
+  my_users: { status:'status' },
   records: { myUserId:'my_user_id', clientPersonIds:'client_person_ids', createdAt:'created_at' },
 };
 
@@ -168,10 +169,10 @@ function initSampleData() {
       { id: 'org2', name: '锐捷科技股份有限公司', industry: '科技/软件', createdAt: now },
     ],
     myUsers: [
-      { id: 'my1', name: '张明', position: '销售总监' },
-      { id: 'my2', name: '李薇', position: '客户经理' },
-      { id: 'my3', name: '王浩', position: '技术顾问' },
-      { id: 'my4', name: '刘婷', position: '项目经理' },
+      { id: 'my1', name: '张明', position: '销售总监', status: 'active' },
+      { id: 'my2', name: '李薇', position: '客户经理', status: 'active' },
+      { id: 'my3', name: '王浩', position: '技术顾问', status: 'active' },
+      { id: 'my4', name: '刘婷', position: '项目经理', status: 'active' },
     ],
     clientPersons: [
       { id: 'cp1', orgId: 'org1', name: '陈志远', position: '集团董事长', importance: 'S', parentId: null, myContactId: 'my1', phone: '138****8888', status: 'active' },
@@ -243,6 +244,10 @@ function migrateData() {
   DB.clientPersons.forEach(p => {
     if (!p.status) { p.status = 'active'; migrated = true; }
   });
+  // 兼容旧数据：给我方人员补充 status
+  DB.myUsers.forEach(u => {
+    if (!u.status) { u.status = 'active'; migrated = true; }
+  });
   if (migrated) saveLocal();
 }
 
@@ -266,6 +271,8 @@ function getChildren(parentId) { return DB.clientPersons.filter(p => p.parentId 
 function getRootPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && !p.parentId && p.status !== 'archived'); }
 function getActivePersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived'); }
 function getArchivedPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status === 'archived'); }
+function getActiveMyUsers() { return DB.myUsers.filter(u => u.status !== 'archived'); }
+function getArchivedMyUsers() { return DB.myUsers.filter(u => u.status === 'archived'); }
 
 function getDateOffset(days) {
   const d = new Date();
@@ -331,7 +338,7 @@ function renderDashboard() {
 
   const stats = [
     { label: '客户机构', value: DB.orgs.length, icon: 'building-2', bg: 'bg-indigo-50', tc: 'text-indigo-500' },
-    { label: '我方人员', value: DB.myUsers.length, icon: 'user-check', bg: 'bg-green-50', tc: 'text-green-500' },
+    { label: '我方人员', value: getActiveMyUsers().length, icon: 'user-check', bg: 'bg-green-50', tc: 'text-green-500' },
     { label: '近30天沟通', value: monthRecords.length, icon: 'message-square', bg: 'bg-orange-50', tc: 'text-orange-500' },
   ];
 
@@ -387,50 +394,32 @@ function goToPeople() { selectedTreeNode = null; switchView('people'); }
 
 // 我方人员弹窗 - 展示我方人员及其服务的甲方机构
 function openMyUsersModal() {
-  if (DB.myUsers.length === 0) { showToast('暂无我方人员'); return; }
+  const activeUsers = getActiveMyUsers();
+  const archivedUsers = getArchivedMyUsers();
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6 max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i data-lucide="user-check" class="w-5 h-5 text-green-500"></i>我方人员 · 服务机构一览</h3>
-        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" title="关闭"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <div class="flex items-center gap-2">
+          <button onclick="openAddMyUserModal()" class="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-semibold hover:bg-green-600 flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增</button>
+          <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" title="关闭"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
       </div>
+      ${activeUsers.length === 0 ? '<div class="text-center py-8 text-gray-400"><p class="text-sm">暂无在职人员</p></div>' : `
       <div class="space-y-4">
-        ${DB.myUsers.map(u => {
-          // 查找该人员对接的甲方人员及其机构
-          const clientPersons = DB.clientPersons.filter(p => p.myContactId === u.id);
-          const orgs = [...new Set(clientPersons.map(p => p.orgId))];
-          const records = DB.records.filter(r => r.myUserId === u.id).length;
-          return `
-            <div class="border border-gray-200 rounded-xl p-4">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold text-sm">${u.name[0]}</div>
-                <div>
-                  <div class="font-bold text-gray-800 text-sm">${u.name}</div>
-                  <div class="text-xs text-gray-400">${u.position}</div>
-                </div>
-                <div class="ml-auto text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">${records}条记录</div>
-              </div>
-              ${orgs.length ? `
-                <div class="space-y-2">
-                  <p class="text-xs text-gray-500 font-semibold flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>服务的甲方机构：</p>
-                  <div class="flex flex-wrap gap-2">
-                    ${orgs.map(oid => {
-                      const o = getOrg(oid);
-                      const ps = clientPersons.filter(p => p.orgId === oid);
-                      return o ? `
-                        <div class="bg-indigo-50 rounded-lg px-3 py-2 min-w-[140px] border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors" onclick="closeModal(); setTimeout(()=>jumpToOrg('${oid}'),80)">
-                          <p class="text-sm font-semibold text-indigo-700">${o.name}</p>
-                          <p class="text-xs text-indigo-400 mt-0.5">对接 ${ps.length} 人：${ps.map(p => p.name).join('、')}</p>
-                        </div>
-                      ` : '';
-                    }).join('')}
-                  </div>
-                </div>
-              ` : '<p class="text-xs text-gray-400">暂未对接甲方人员</p>'}
-            </div>
-          `;
-        }).join('')}
-      </div>
+        ${activeUsers.map(u => renderMyUserCard(u)).join('')}
+      </div>`}
+      ${archivedUsers.length > 0 ? `
+      <div class="mt-5 pt-4 border-t border-gray-200">
+        <div class="flex items-center gap-2 mb-3 cursor-pointer" onclick="toggleArchivedMyUsers()">
+          <i data-lucide="archive" class="w-4 h-4 text-gray-400"></i>
+          <span class="text-sm font-semibold text-gray-500">归档人员（${archivedUsers.length}）</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 archived-my-toggle"></i>
+        </div>
+        <div id="archivedMyUsers" class="space-y-3 hidden">
+          ${archivedUsers.map(u => renderMyUserCard(u, true)).join('')}
+        </div>
+      </div>` : ''}
       <div class="flex mt-5">
         <button onclick="closeModal()" class="w-full px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">关闭</button>
       </div>
@@ -438,6 +427,156 @@ function openMyUsersModal() {
   document.getElementById('modal').classList.remove('hidden');
   document.getElementById('modal').classList.add('flex');
   if (lucide) lucide.createIcons();
+}
+
+function renderMyUserCard(u, isArchived = false) {
+  const clientPersons = DB.clientPersons.filter(p => p.myContactId === u.id);
+  const orgs = [...new Set(clientPersons.map(p => p.orgId))];
+  const records = DB.records.filter(r => r.myUserId === u.id).length;
+  return `
+    <div class="border rounded-xl p-4 ${isArchived ? 'border-gray-200 opacity-70 grayscale bg-gray-50' : 'border-gray-200'}">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-10 h-10 rounded-full ${isArchived ? 'bg-gray-100 text-gray-400' : 'bg-green-100 text-green-600'} flex items-center justify-center font-bold text-sm">${u.name[0]}</div>
+        <div>
+          <div class="font-bold text-gray-800 text-sm flex items-center gap-2">
+            ${u.name}
+            ${isArchived ? '<span class="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-normal">已归档</span>' : ''}
+          </div>
+          <div class="text-xs text-gray-400">${u.position}</div>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <span class="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">${records}条记录</span>
+          ${isArchived
+            ? `<button onclick="event.stopPropagation(); restoreMyUser('${u.id}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-500 rounded-lg text-xs hover:bg-blue-100 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>恢复</button>`
+            : `<button onclick="event.stopPropagation(); deleteMyUser('${u.id}')" class="px-2.5 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i>删除</button>`
+          }
+        </div>
+      </div>
+      ${orgs.length ? `
+        <div class="space-y-2">
+          <p class="text-xs text-gray-500 font-semibold flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>服务的甲方机构：</p>
+          <div class="flex flex-wrap gap-2">
+            ${orgs.map(oid => {
+              const o = getOrg(oid);
+              const ps = clientPersons.filter(p => p.orgId === oid);
+              return o ? `
+                <div class="bg-indigo-50 rounded-lg px-3 py-2 min-w-[140px] border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors" onclick="closeModal(); setTimeout(()=>jumpToOrg('${oid}'),80)">
+                  <p class="text-sm font-semibold text-indigo-700">${o.name}</p>
+                  <p class="text-xs text-indigo-400 mt-0.5">对接 ${ps.length} 人：${ps.map(p => p.name).join('、')}</p>
+                </div>
+              ` : '';
+            }).join('')}
+          </div>
+        </div>
+      ` : '<p class="text-xs text-gray-400">暂未对接甲方人员</p>'}
+    </div>
+  `;
+}
+
+function toggleArchivedMyUsers() {
+  const el = document.getElementById('archivedMyUsers');
+  const icon = document.querySelector('.archived-my-toggle');
+  if (!el || !icon) return;
+  el.classList.toggle('hidden');
+  // Flip chevron
+  if (el.classList.contains('hidden')) {
+    icon.setAttribute('data-lucide', 'chevron-down');
+  } else {
+    icon.setAttribute('data-lucide', 'chevron-up');
+  }
+  if (lucide) lucide.createIcons();
+}
+
+function openAddMyUserModal() {
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6 max-h-[80vh] overflow-y-auto">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="user-plus" class="w-5 h-5 text-green-500"></i>新增我方人员</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">姓名 <span class="text-red-500">*</span></label>
+          <input id="myUserName" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" placeholder="请输入姓名" maxlength="20"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">职位 <span class="text-red-500">*</span></label>
+          <input id="myUserPosition" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" placeholder="如：销售总监、客户经理" maxlength="30"></div>
+      </div>
+      <div class="flex gap-3 mt-5">
+        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+        <button onclick="saveMyUser()" class="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">保存</button>
+      </div>
+    </div>`;
+  if (lucide) lucide.createIcons();
+}
+
+function saveMyUser() {
+  const name = document.getElementById('myUserName').value.trim();
+  const position = document.getElementById('myUserPosition').value.trim();
+  if (!name) { showToast('请输入姓名'); return; }
+  if (!position) { showToast('请输入职位'); return; }
+  const newUser = { id: uid(), name, position, status: 'active' };
+  DB.myUsers.push(newUser);
+  saveLocal();
+  syncToCloud('my_users', newUser);
+  closeModal();
+  setTimeout(() => openMyUsersModal(), 100);
+  showToast('已新增我方人员');
+}
+
+// 删除我方人员 - 弹出选择框：归档 或 直接删除
+function deleteMyUser(userId) {
+  const u = getMyUser(userId);
+  if (!u) return;
+  const records = DB.records.filter(r => r.myUserId === userId).length;
+  const clientRefs = DB.clientPersons.filter(p => p.myContactId === userId).length;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6 max-w-md">
+      <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5 text-red-500"></i>删除我方人员</h3>
+      <p class="text-sm text-gray-600 mb-4">确定要处理「<span class="font-bold text-gray-800">${u.name}</span>（${u.position}）」吗？</p>
+      ${records > 0 || clientRefs > 0 ? `<p class="text-xs text-gray-500 bg-amber-50 rounded-lg p-3 mb-4 border border-amber-200">该人员涉及 <span class="font-bold text-amber-700">${records}</span> 条沟通记录、<span class="font-bold text-amber-700">${clientRefs}</span> 个甲方人员关联。如选择「归档」，这些关联将被完整保留。</p>` : ''}
+      <div class="space-y-3">
+        <button onclick="archiveMyUser('${userId}')" class="w-full px-4 py-3 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-semibold hover:bg-amber-100 flex items-center justify-center gap-2">
+          <i data-lucide="archive" class="w-4 h-4"></i>归档 — 保留记录和关系，放入归档区
+        </button>
+        <button onclick="hardDeleteMyUser('${userId}')" class="w-full px-4 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold hover:bg-red-100 flex items-center justify-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>直接删除 — 永久移除，清除所有关联
+        </button>
+        <button onclick="openMyUsersModal()" class="w-full px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+      </div>
+    </div>`;
+  if (lucide) lucide.createIcons();
+}
+
+function archiveMyUser(userId) {
+  const u = getMyUser(userId);
+  if (!u) return;
+  u.status = 'archived';
+  saveLocal();
+  syncToCloud('my_users', u);
+  openMyUsersModal();
+  showToast('已归档，记录和关系保留');
+}
+
+function hardDeleteMyUser(userId) {
+  const u = getMyUser(userId);
+  if (!u) return;
+  // 将关联的 clientPersons 的 myContactId 清除
+  DB.clientPersons.forEach(p => { if (p.myContactId === userId) p.myContactId = null; });
+  // 将关联的 records 的 myUserId 清除
+  DB.records.forEach(r => { if (r.myUserId === userId) r.myUserId = null; });
+  // 物理删除
+  DB.myUsers = DB.myUsers.filter(u => u.id !== userId);
+  saveLocal();
+  removeFromCloud('my_users', userId);
+  openMyUsersModal();
+  renderAll();
+  showToast('已直接删除');
+}
+
+function restoreMyUser(userId) {
+  const u = getMyUser(userId);
+  if (!u) return;
+  u.status = 'active';
+  saveLocal();
+  syncToCloud('my_users', u);
+  openMyUsersModal();
+  showToast('已恢复在职');
 }
 
 // 点击仪表盘机构卡片筛选左侧时间线
@@ -1059,7 +1198,7 @@ function openPersonModal(orgId, personId) {
   const targetOrgId = orgId || (person ? person.orgId : (DB.orgs[0]?.id || ''));
   const orgOptions = DB.orgs.map(o => `<option value="${o.id}" ${o.id === targetOrgId ? 'selected' : ''}>${o.name}</option>`).join('');
   const impOptions = Object.entries(IMPORTANCE_CONFIG).map(([k,v]) => `<option value="${k}" ${person && person.importance === k ? 'selected' : ''}>${v.label}</option>`).join('');
-  const myUserOptions = DB.myUsers.map(u => `<option value="${u.id}" ${person && person.myContactId === u.id ? 'selected' : ''}>${u.name}（${u.position}）</option>`).join('');
+  const myUserOptions = getActiveMyUsers().map(u => `<option value="${u.id}" ${person && person.myContactId === u.id ? 'selected' : ''}>${u.name}（${u.position}）</option>`).join('');
 
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6 max-h-[80vh] overflow-y-auto">
@@ -1345,7 +1484,7 @@ async function deleteRecord(id) {
 function renderRecordPage() {
   document.getElementById('recDate').value = getDateOffset(0);
   const myUserSelect = document.getElementById('recMyUser');
-  myUserSelect.innerHTML = '<option value="">请选择...</option>' + DB.myUsers.map(u => `<option value="${u.id}">${u.name}（${u.position}）</option>`).join('');
+  myUserSelect.innerHTML = '<option value="">请选择...</option>' + getActiveMyUsers().map(u => `<option value="${u.id}">${u.name}（${u.position}）</option>`).join('');
 
   selectedClientPersons.clear();
   // 填充甲方机构下拉
