@@ -1,18 +1,18 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.5.3 - 对接人非必填 + 人员按重要性排序
+// v2.5.4 - 修复对接人必填校验 + 重要性排序
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
 const CONFIG_KEY = 'shangtuo_supabase_config';
 
 const IMPORTANCE_CONFIG = {
-  S: { label: 'S级·核心决策者', short: 'S', color: '#EF4444' },
-  A: { label: 'A级·关键影响者', short: 'A', color: '#F97316' },
-  B: { label: 'B级·重要对接人', short: 'B', color: '#3B82F6' },
-  C: { label: 'C级·普通对接人', short: 'C', color: '#10B981' },
-  D: { label: 'D级·辅助人员', short: 'D', color: '#6B7280' },
+  S: { label: 'S级·核心决策者', short: 'S', color: '#EF4444', rank: 0 },
+  A: { label: 'A级·关键影响者', short: 'A', color: '#F97316', rank: 1 },
+  B: { label: 'B级·重要对接人', short: 'B', color: '#3B82F6', rank: 2 },
+  C: { label: 'C级·普通对接人', short: 'C', color: '#10B981', rank: 3 },
+  D: { label: 'D级·辅助人员', short: 'D', color: '#6B7280', rank: 4 },
 };
 
 const TYPE_CONFIG = {
@@ -1002,12 +1002,12 @@ function renderOrgDetail(orgId) {
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3 detail-card-grid">
-      ${activePersons.sort((a,b) => (a.importance||'D').localeCompare(b.importance||'D')).map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无在职人员</p></div>'}
+      ${activePersons.sort((a,b) => (IMPORTANCE_CONFIG[a.importance]?.rank??4) - (IMPORTANCE_CONFIG[b.importance]?.rank??4)).map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无在职人员</p></div>'}
     </div>
     ${archivedPersons.length ? `
       <h4 class="font-bold text-gray-500 text-sm mt-5 mb-3 flex items-center gap-2"><i data-lucide="archive" class="w-4 h-4"></i>过往人员（${archivedPersons.length}）</h4>
       <div class="grid grid-cols-2 gap-3 detail-card-grid">
-        ${archivedPersons.sort((a,b) => (a.importance||'D').localeCompare(b.importance||'D')).map(p => renderPersonCard(p, true)).join('')}
+        ${archivedPersons.sort((a,b) => (IMPORTANCE_CONFIG[a.importance]?.rank??4) - (IMPORTANCE_CONFIG[b.importance]?.rank??4)).map(p => renderPersonCard(p, true)).join('')}
       </div>
     ` : ''}`;
   if (lucide) lucide.createIcons();
@@ -1254,7 +1254,7 @@ async function savePerson(personId) {
   const myContactId = document.getElementById('pMyContact').value;
   const phone = document.getElementById('pPhone').value.trim();
 
-  if (!name || !position || !myContactId) { showToast('请填写必填项'); return; }
+  if (!name || !position) { showToast('请填写必填项'); return; }
 
   if (personId) {
     const p = getClientPerson(personId);
