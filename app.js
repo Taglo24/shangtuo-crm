@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.5.1 - 修复录入页面新增人员弹窗不显示
+// v2.5.2 - 我方对接人下拉加"-"选项
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -1221,7 +1221,7 @@ function openPersonModal(orgId, personId) {
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">上级（可选）</label>
             <select id="pParent" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">无（顶层人员）</option>${updateParentOptions(targetOrgId, personId)}</select></div>
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">我方对接人 <span class="text-red-500">*</span></label>
-            <select id="pMyContact" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择...</option>${myUserOptions}</select></div>
+            <select id="pMyContact" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">-</option>${myUserOptions}</select></div>
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">联系电话</label>
             <input type="text" id="pPhone" value="${person ? person.phone || '' : ''}" placeholder="如：138****8888" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
         </div>
@@ -1582,7 +1582,7 @@ function openAddPersonFromRecord() {
             </select></div>
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">我方对接人</label>
             <select id="quickPersonMyUser" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
-              <option value="">暂不指定</option>
+              <option value="">-</option>
               ${getActiveMyUsers().map(u => `<option value="${u.id}">${u.name}</option>`).join('')}
             </select></div>
         </div>
