@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.5.2 - 我方对接人下拉加"-"选项
+// v2.5.3 - 对接人非必填 + 人员按重要性排序
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -1002,12 +1002,12 @@ function renderOrgDetail(orgId) {
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3 detail-card-grid">
-      ${activePersons.map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无在职人员</p></div>'}
+      ${activePersons.sort((a,b) => (a.importance||'D').localeCompare(b.importance||'D')).map(p => renderPersonCard(p)).join('') || '<div class="empty-state col-span-2"><p>暂无在职人员</p></div>'}
     </div>
     ${archivedPersons.length ? `
       <h4 class="font-bold text-gray-500 text-sm mt-5 mb-3 flex items-center gap-2"><i data-lucide="archive" class="w-4 h-4"></i>过往人员（${archivedPersons.length}）</h4>
       <div class="grid grid-cols-2 gap-3 detail-card-grid">
-        ${archivedPersons.map(p => renderPersonCard(p, true)).join('')}
+        ${archivedPersons.sort((a,b) => (a.importance||'D').localeCompare(b.importance||'D')).map(p => renderPersonCard(p, true)).join('')}
       </div>
     ` : ''}`;
   if (lucide) lucide.createIcons();
@@ -1220,7 +1220,7 @@ function openPersonModal(orgId, personId) {
             <select id="pImportance" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">${impOptions}</select></div>
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">上级（可选）</label>
             <select id="pParent" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">无（顶层人员）</option>${updateParentOptions(targetOrgId, personId)}</select></div>
-          <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">我方对接人 <span class="text-red-500">*</span></label>
+          <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">我方对接人</label>
             <select id="pMyContact" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">-</option>${myUserOptions}</select></div>
           <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">联系电话</label>
             <input type="text" id="pPhone" value="${person ? person.phone || '' : ''}" placeholder="如：138****8888" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
