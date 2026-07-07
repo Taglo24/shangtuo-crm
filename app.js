@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.5 - 录入页面快速新增机构/人员
+// v2.5.1 - 修复录入页面新增人员弹窗不显示
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -1592,6 +1592,8 @@ function openAddPersonFromRecord() {
         <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
       </div>
     </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
   if (lucide) lucide.createIcons();
 }
 
