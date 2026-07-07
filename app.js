@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.6 - 机构详情链接功能
+// v2.6.1 - 详情按钮下增加「修改详情链接」小字按钮
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -375,10 +375,13 @@ function renderDashboard() {
               </div>
               <p class="text-xs text-gray-400 mt-0.5">${o.industry || '未设置行业'}</p>
             </div>
-            ${o.detailUrl
-              ? `<button onclick="event.stopPropagation(); window.open('${o.detailUrl}','_blank')" class="px-2.5 py-1 bg-blue-50 text-blue-500 rounded-lg text-xs font-medium hover:bg-blue-100 flex items-center gap-1 flex-shrink-0"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
-              : `<button onclick="event.stopPropagation(); openDetailUrlConfig('${o.id}')" class="px-2.5 py-1 bg-gray-50 text-gray-400 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-100 flex items-center gap-1 flex-shrink-0"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
-            }
+            <div class="flex flex-col items-center gap-0.5 flex-shrink-0">
+              ${o.detailUrl
+                ? `<button onclick="event.stopPropagation(); window.open('${o.detailUrl}','_blank')" class="px-2.5 py-1 bg-blue-50 text-blue-500 rounded-lg text-xs font-medium hover:bg-blue-100 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
+                : `<button onclick="event.stopPropagation(); openDetailUrlConfig('${o.id}')" class="px-2.5 py-1 bg-gray-50 text-gray-400 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-100 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>详情</button>`
+              }
+              <button onclick="event.stopPropagation(); openDetailUrlConfig('${o.id}')" class="text-[10px] text-gray-300 hover:text-indigo-400 transition-colors leading-none pt-0.5">修改详情链接</button>
+            </div>
           </div>
           <div class="flex items-center gap-4 text-xs cursor-pointer" onclick="dashFilterByOrg('${o.id}')">
             <div class="flex items-center gap-1 text-gray-500"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${persons.length}人</span></div>
