@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.4 - 我方人员新增/删除/归档
+// v2.5 - 录入页面快速新增机构/人员
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -1520,6 +1520,99 @@ function renderRecClientPersons() {
   }
   wrapper.classList.remove('hidden');
   if (lucide) lucide.createIcons();
+}
+
+// 从录入页面新增机构
+function openAddOrgFromRecord() {
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>新增客户机构</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">机构名称 <span class="text-red-500">*</span></label>
+          <input type="text" id="quickOrgName" placeholder="如：XX集团有限公司" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">所属行业</label>
+          <input type="text" id="quickOrgIndustry" placeholder="如：金融投资、科技/软件" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="saveOrgFromRecord()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">确认添加</button>
+        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+async function saveOrgFromRecord() {
+  const name = document.getElementById('quickOrgName').value.trim();
+  if (!name) { showToast('请输入机构名称'); return; }
+  const industry = document.getElementById('quickOrgIndustry').value.trim();
+  const org = { id: uid(), name, industry, createdAt: Date.now() };
+  DB.orgs.push(org);
+  saveLocal();
+  await syncToCloud('orgs', org);
+  closeModal();
+  // 刷新下拉并自动选中新机构
+  const orgSelect = document.getElementById('recClientOrg');
+  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + DB.orgs.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  orgSelect.value = org.id;
+  // 触发人员区域刷新
+  renderRecClientPersons();
+  showToast('机构添加成功，已自动选中');
+}
+
+// 从录入页面新增甲方人员
+function openAddPersonFromRecord() {
+  const orgId = document.getElementById('recClientOrg').value;
+  if (!orgId) { showToast('请先选择甲方机构'); return; }
+  const org = getOrg(orgId);
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="user-plus" class="w-5 h-5 text-indigo-500"></i>新增甲方人员</h3>
+      <p class="text-xs text-gray-400 mb-4">所属机构：<span class="font-bold text-gray-700">${org ? org.name : orgId}</span></p>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">姓名 <span class="text-red-500">*</span></label>
+          <input type="text" id="quickPersonName" placeholder="请输入姓名" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" maxlength="20"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">职位 <span class="text-red-500">*</span></label>
+          <input type="text" id="quickPersonPosition" placeholder="如：总经理、技术总监" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" maxlength="30"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">重要程度</label>
+            <select id="quickPersonImportance" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
+              ${Object.entries(IMPORTANCE_CONFIG).map(([k,v]) => `<option value="${k}" ${k === 'B' ? 'selected' : ''}>${v.label}</option>`).join('')}
+            </select></div>
+          <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">我方对接人</label>
+            <select id="quickPersonMyUser" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
+              <option value="">暂不指定</option>
+              ${getActiveMyUsers().map(u => `<option value="${u.id}">${u.name}</option>`).join('')}
+            </select></div>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="savePersonFromRecord('${orgId}')" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">确认添加</button>
+        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+      </div>
+    </div>`;
+  if (lucide) lucide.createIcons();
+}
+
+async function savePersonFromRecord(orgId) {
+  const name = document.getElementById('quickPersonName').value.trim();
+  const position = document.getElementById('quickPersonPosition').value.trim();
+  if (!name) { showToast('请输入姓名'); return; }
+  if (!position) { showToast('请输入职位'); return; }
+  const importance = document.getElementById('quickPersonImportance').value;
+  const myContactId = document.getElementById('quickPersonMyUser').value || null;
+  const person = {
+    id: uid(), orgId, name, position, importance,
+    parentId: null, myContactId, phone: '', status: 'active'
+  };
+  DB.clientPersons.push(person);
+  saveLocal();
+  await syncToCloud('client_persons', person);
+  closeModal();
+  // 刷新人员列表
+  renderRecClientPersons();
+  showToast('人员添加成功');
 }
 
 function updateTypeSelector() {

@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="style.css?v=2.4">
+  <link rel="stylesheet" href="style.css?v=2.5">
 </head>
 <body class="bg-gray-50 min-h-screen">
 
@@ -157,10 +157,16 @@
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">对接甲方人员 <span class="text-red-500">*</span></label>
             <div class="mb-3">
               <label class="block text-xs text-gray-400 mb-1.5">第一步：选择甲方机构</label>
-              <select id="recClientOrg" onchange="renderRecClientPersons()" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择机构...</option></select>
+              <div class="flex gap-2">
+                <select id="recClientOrg" onchange="renderRecClientPersons()" class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择机构...</option></select>
+                <button type="button" onclick="openAddOrgFromRecord()" class="px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增机构</button>
+              </div>
             </div>
             <div id="recClientPersonsContainer" class="hidden">
-              <label class="block text-xs text-gray-400 mb-1.5">第二步：选择对接人员（可多选）</label>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs text-gray-400">第二步：选择对接人员（可多选）</label>
+                <button type="button" onclick="openAddPersonFromRecord()" class="px-2.5 py-1 bg-white border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"><i data-lucide="plus" class="w-3 h-3"></i>新增人员</button>
+              </div>
               <div id="recClientPersons" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto"></div>
             </div>
             <p id="recClientError" class="text-red-500 text-xs mt-1 hidden">请至少选择一名甲方人员</p></div>
@@ -199,6 +205,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>
