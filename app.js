@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.6.1 - 详情按钮下增加「修改详情链接」小字按钮
+// v2.6.2 - 甲方机构列表支持拖拽排序，sortOrder 持久化保存
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -26,7 +26,7 @@ const TYPE_CONFIG = {
 
 // 字段映射：JS camelCase <-> Supabase snake_case
 const FIELD_MAP = {
-  orgs: { orgId:'org_id', createdAt:'created_at', detailUrl:'detail_url' },
+  orgs: { orgId:'org_id', createdAt:'created_at', detailUrl:'detail_url', sortOrder:'sort_order' },
   client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id', status:'status' },
   my_users: { status:'status' },
   records: { myUserId:'my_user_id', clientPersonIds:'client_person_ids', createdAt:'created_at' },
@@ -165,8 +165,8 @@ function initSampleData() {
   const now = Date.now();
   DB = {
     orgs: [
-      { id: 'org1', name: '中诚投资集团', industry: '金融投资', createdAt: now },
-      { id: 'org2', name: '锐捷科技股份有限公司', industry: '科技/软件', createdAt: now },
+      { id: 'org1', name: '中诚投资集团', industry: '金融投资', createdAt: now, sortOrder: 100 },
+      { id: 'org2', name: '锐捷科技股份有限公司', industry: '科技/软件', createdAt: now, sortOrder: 200 },
     ],
     myUsers: [
       { id: 'my1', name: '张明', position: '销售总监', status: 'active' },
@@ -248,6 +248,13 @@ function migrateData() {
   DB.myUsers.forEach(u => {
     if (!u.status) { u.status = 'active'; migrated = true; }
   });
+  // 兼容旧数据：给机构补充 sortOrder（按当前索引*100，留足插入空间）
+  DB.orgs.forEach((o, idx) => {
+    if (o.sortOrder === undefined || o.sortOrder === null) {
+      o.sortOrder = (idx + 1) * 100;
+      migrated = true;
+    }
+  });
   if (migrated) saveLocal();
 }
 
@@ -273,6 +280,74 @@ function getActivePersons(orgId) { return DB.clientPersons.filter(p => p.orgId =
 function getArchivedPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status === 'archived'); }
 function getActiveMyUsers() { return DB.myUsers.filter(u => u.status !== 'archived'); }
 function getArchivedMyUsers() { return DB.myUsers.filter(u => u.status === 'archived'); }
+
+// 机构按 sortOrder 排序（无 sortOrder 的排最后）
+function sortOrgs() {
+  return [...DB.orgs].sort((a, b) => {
+    const ao = a.sortOrder ?? Infinity;
+    const bo = b.sortOrder ?? Infinity;
+    return ao - bo;
+  });
+}
+
+// =====================================================
+// 仪表盘机构拖拽排序
+// =====================================================
+let draggedOrgId = null;
+
+function dragStartOrg(ev, orgId) {
+  draggedOrgId = orgId;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.target.classList.add('opacity-50', 'ring-2', 'ring-indigo-400');
+}
+
+function dragOverOrg(ev) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  const card = ev.currentTarget;
+  card.classList.add('border-indigo-400', 'bg-indigo-50');
+}
+
+function dragLeaveOrg(ev) {
+  const card = ev.currentTarget;
+  card.classList.remove('border-indigo-400', 'bg-indigo-50');
+}
+
+function dropOrg(ev, dropOrgId) {
+  ev.preventDefault();
+  const card = ev.currentTarget;
+  card.classList.remove('border-indigo-400', 'bg-indigo-50');
+  if (draggedOrgId && draggedOrgId !== dropOrgId) {
+    reorderOrgs(draggedOrgId, dropOrgId);
+  }
+  draggedOrgId = null;
+}
+
+function dragEndOrg(ev) {
+  ev.target.classList.remove('opacity-50', 'ring-2', 'ring-indigo-400');
+  draggedOrgId = null;
+}
+
+function reorderOrgs(dragId, dropId) {
+  const sorted = sortOrgs();
+  const dragIdx = sorted.findIndex(o => o.id === dragId);
+  const dropIdx = sorted.findIndex(o => o.id === dropId);
+  if (dragIdx === -1 || dropIdx === -1) return;
+
+  // 从数组中移除拖拽项，插入到目标位置
+  const [moved] = sorted.splice(dragIdx, 1);
+  sorted.splice(dropIdx, 0, moved);
+
+  // 重新分配 sortOrder（间隔100，留足插入空间）
+  sorted.forEach((o, idx) => {
+    const org = DB.orgs.find(oo => oo.id === o.id);
+    if (org) org.sortOrder = (idx + 1) * 100;
+  });
+
+  saveLocal();
+  renderDashboard();
+  showToast('机构顺序已更新');
+}
 
 function getDateOffset(days) {
   const d = new Date();
@@ -358,15 +433,17 @@ function renderDashboard() {
 
   renderDashboardCalendar();
 
-  // 右侧：甲方机构列表
+  // 右侧：甲方机构列表（支持拖拽排序）
   const orgsContainer = document.getElementById('dashboardOrgs');
   if (orgsContainer) {
-    orgsContainer.innerHTML = DB.orgs.length ? DB.orgs.map(o => {
+    const sortedOrgs = sortOrgs();
+    orgsContainer.innerHTML = sortedOrgs.length ? sortedOrgs.map(o => {
       const persons = getActivePersons(o.id);
       const records = DB.records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === o.id; }));
       const keyCount = persons.filter(p => p.importance === 'S' || p.importance === 'A').length;
       return `
-        <div class="border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition-all card-hover">
+        <div draggable="true" data-org-id="${o.id}" ondragstart="dragStartOrg(event,'${o.id}')" ondragover="dragOverOrg(event)" ondragleave="dragLeaveOrg(event)" ondrop="dropOrg(event,'${o.id}')" ondragend="dragEndOrg(event)"
+          class="border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition-all card-hover cursor-move">
           <div class="flex items-center gap-3 mb-3">
             <div class="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 cursor-pointer hover:bg-indigo-700" onclick="dashFilterByOrg('${o.id}')" title="点击筛选该机构沟通记录">${o.name[0]}</div>
             <div class="flex-1 min-w-0">
@@ -757,7 +834,7 @@ function renderOrgTree() {
     container.innerHTML = '<div class="empty-state"><p>暂无机构，点击右上角添加</p></div>';
     return;
   }
-  container.innerHTML = DB.orgs.map(org => {
+  container.innerHTML = sortOrgs().map(org => {
     const activePersons = getActivePersons(org.id);
     const archivedPersons = getArchivedPersons(org.id);
     const isSelected = selectedTreeNode && selectedTreeNode.type === 'org' && selectedTreeNode.id === org.id;
@@ -1135,7 +1212,8 @@ async function saveOrg() {
   const name = document.getElementById('orgName').value.trim();
   if (!name) { showToast('请输入机构名称'); return; }
   const industry = document.getElementById('orgIndustry').value.trim();
-  const org = { id: uid(), name, industry, createdAt: Date.now() };
+  const maxOrder = DB.orgs.reduce((max, o) => Math.max(max, o.sortOrder || 0), 0);
+  const org = { id: uid(), name, industry, createdAt: Date.now(), sortOrder: maxOrder + 100 };
   DB.orgs.push(org);
   saveLocal();
   await syncToCloud('orgs', org);
@@ -1239,7 +1317,7 @@ function openPersonModal(orgId, personId) {
   const isEdit = !!personId;
   const person = isEdit ? getClientPerson(personId) : null;
   const targetOrgId = orgId || (person ? person.orgId : (DB.orgs[0]?.id || ''));
-  const orgOptions = DB.orgs.map(o => `<option value="${o.id}" ${o.id === targetOrgId ? 'selected' : ''}>${o.name}</option>`).join('');
+  const orgOptions = sortOrgs().map(o => `<option value="${o.id}" ${o.id === targetOrgId ? 'selected' : ''}>${o.name}</option>`).join('');
   const impOptions = Object.entries(IMPORTANCE_CONFIG).map(([k,v]) => `<option value="${k}" ${person && person.importance === k ? 'selected' : ''}>${v.label}</option>`).join('');
   const myUserOptions = getActiveMyUsers().map(u => `<option value="${u.id}" ${person && person.myContactId === u.id ? 'selected' : ''}>${u.name}（${u.position}）</option>`).join('');
 
@@ -1343,7 +1421,7 @@ async function restorePerson(personId) {
 function renderTimeline() {
   const filterOrg = document.getElementById('filterOrg');
   const currentOrg = filterOrg.value;
-  filterOrg.innerHTML = '<option value="">全部机构</option>' + DB.orgs.map(o => `<option value="${o.id}" ${o.id === currentOrg ? 'selected' : ''}>${o.name}</option>`).join('');
+  filterOrg.innerHTML = '<option value="">全部机构</option>' + sortOrgs().map(o => `<option value="${o.id}" ${o.id === currentOrg ? 'selected' : ''}>${o.name}</option>`).join('');
 
   const filterPerson = document.getElementById('filterPerson');
   const selectedOrg = document.getElementById('filterOrg').value;
@@ -1532,7 +1610,7 @@ function renderRecordPage() {
   selectedClientPersons.clear();
   // 填充甲方机构下拉
   const orgSelect = document.getElementById('recClientOrg');
-  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + DB.orgs.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + sortOrgs().map(o => `<option value="${o.id}">${o.name}</option>`).join('');
   // 隐藏人员区域
   document.getElementById('recClientPersonsContainer').classList.add('hidden');
 
@@ -1590,14 +1668,15 @@ async function saveOrgFromRecord() {
   const name = document.getElementById('quickOrgName').value.trim();
   if (!name) { showToast('请输入机构名称'); return; }
   const industry = document.getElementById('quickOrgIndustry').value.trim();
-  const org = { id: uid(), name, industry, createdAt: Date.now() };
+  const maxOrder = DB.orgs.reduce((max, o) => Math.max(max, o.sortOrder || 0), 0);
+  const org = { id: uid(), name, industry, createdAt: Date.now(), sortOrder: maxOrder + 100 };
   DB.orgs.push(org);
   saveLocal();
   await syncToCloud('orgs', org);
   closeModal();
   // 刷新下拉并自动选中新机构
   const orgSelect = document.getElementById('recClientOrg');
-  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + DB.orgs.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + sortOrgs().map(o => `<option value="${o.id}">${o.name}</option>`).join('');
   orgSelect.value = org.id;
   // 触发人员区域刷新
   renderRecClientPersons();
