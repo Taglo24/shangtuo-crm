@@ -1,5 +1,5 @@
 -- ============================================
--- 商拓通 · Supabase 建表 SQL
+-- 商拓通 · Supabase 建表 SQL（v2.6.2+）
 -- 在 Supabase 控制台 → SQL Editor 中执行
 -- ============================================
 
@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS orgs (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   industry    TEXT,
+  detail_url  TEXT,
+  sort_order  INTEGER DEFAULT 100,
   created_at  BIGINT
 );
 
@@ -15,7 +17,8 @@ CREATE TABLE IF NOT EXISTS orgs (
 CREATE TABLE IF NOT EXISTS my_users (
   id        TEXT PRIMARY KEY,
   name      TEXT NOT NULL,
-  position  TEXT
+  position  TEXT,
+  status    TEXT DEFAULT 'active'
 );
 
 -- 3. 甲方人员表
@@ -27,7 +30,8 @@ CREATE TABLE IF NOT EXISTS client_persons (
   importance     TEXT DEFAULT 'C',
   parent_id      TEXT,
   my_contact_id  TEXT REFERENCES my_users(id),
-  phone          TEXT
+  phone          TEXT,
+  status         TEXT DEFAULT 'active'
 );
 
 -- 4. 沟通记录表（client_person_ids 用数组存储多对多关系）
@@ -56,3 +60,9 @@ CREATE POLICY "Allow all for prototype" ON orgs FOR ALL USING (true) WITH CHECK 
 CREATE POLICY "Allow all for prototype" ON my_users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for prototype" ON client_persons FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for prototype" ON records FOR ALL USING (true) WITH CHECK (true);
+
+-- 如果表已存在需加新字段，取消注释以下并执行：
+-- ALTER TABLE orgs ADD COLUMN IF NOT EXISTS detail_url TEXT;
+-- ALTER TABLE orgs ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 100;
+-- ALTER TABLE my_users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+-- ALTER TABLE client_persons ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
