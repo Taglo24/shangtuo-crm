@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.6.2 - 甲方机构列表支持拖拽排序，sortOrder 持久化保存
+// v2.7 - 本地数据全量推送云端 + 手动推送按钮
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -141,6 +141,36 @@ const Cloud = {
     if (!this.enabled) return;
     try { await this.client.from(table).delete().eq('id', id); } catch (e) { console.error('Cloud delete failed:', e); }
   },
+
+  // 全量推送本地数据到云端
+  async pushAll(db) {
+    if (!this.enabled) return false;
+    this.status = 'spin'; this.updateIndicator();
+    try {
+      // 先清空云端旧数据，再全量写入（避免 ID 冲突残留）
+      await this.client.from('records').delete().neq('id', '__keep__');
+      await this.client.from('client_persons').delete().neq('id', '__keep__');
+      await this.client.from('my_users').delete().neq('id', '__keep__');
+      await this.client.from('orgs').delete().neq('id', '__keep__');
+
+      const rowsOrgs = db.orgs.map(o => this.toRow('orgs', o));
+      const rowsMyUsers = db.myUsers.map(u => this.toRow('my_users', u));
+      const rowsPersons = db.clientPersons.map(p => this.toRow('client_persons', p));
+      const rowsRecords = db.records.map(r => this.toRow('records', r));
+
+      if (rowsOrgs.length) await this.client.from('orgs').upsert(rowsOrgs);
+      if (rowsMyUsers.length) await this.client.from('my_users').upsert(rowsMyUsers);
+      if (rowsPersons.length) await this.client.from('client_persons').upsert(rowsPersons);
+      if (rowsRecords.length) await this.client.from('records').upsert(rowsRecords);
+
+      this.status = 'on'; this.updateIndicator();
+      return true;
+    } catch (e) {
+      console.error('Cloud pushAll failed:', e);
+      this.status = 'err'; this.updateIndicator();
+      return false;
+    }
+  },
 };
 
 // =====================================================
@@ -150,6 +180,18 @@ function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
 
 async function syncToCloud(table, obj) { await Cloud.upsert(table, obj); }
 async function removeFromCloud(table, id) { await Cloud.remove(table, id); }
+async function pushAllToCloud() { return await Cloud.pushAll(DB); }
+
+async function pushLocalToCloud() {
+  if (!Cloud.enabled) { showToast('请先配置云同步'); return; }
+  showToast('正在推送本地数据到云端...');
+  const pushed = await pushAllToCloud();
+  if (pushed) {
+    showToast('本地数据已同步到云端，其他设备可以访问了');
+  } else {
+    showToast('推送失败，请检查网络连接');
+  }
+}
 
 async function loadFromCloud() {
   const data = await Cloud.loadAll();
@@ -1807,6 +1849,7 @@ function openSyncModal() {
       </div>
       <div class="flex gap-3 mt-6">
         <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存并连接</button>
+        ${Cloud.enabled ? '<button onclick="closeModal();pushLocalToCloud()" class="px-4 py-2.5 bg-green-50 text-green-600 rounded-lg text-sm font-semibold hover:bg-green-100">推送本地数据</button>' : ''}
         ${Cloud.enabled ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">断开</button>' : ''}
         <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
       </div>
@@ -1828,7 +1871,22 @@ async function saveSyncConfig() {
     renderAll();
     showToast('云端数据已加载');
   } else if (Cloud.enabled) {
-    showToast('连接成功，云端暂无数据');
+    // 云端无数据，检查本地是否有真实数据需要推送
+    const hasRealData = DB.orgs.some(o => !o.id.startsWith('org'))  // 不是示例数据 org1/org2
+      || DB.myUsers.some(u => !u.id.startsWith('my'))
+      || DB.clientPersons.some(p => !p.id.startsWith('cp'))
+      || DB.records.length > 0;
+    if (hasRealData) {
+      showToast('正在推送本地数据到云端...');
+      const pushed = await pushAllToCloud();
+      if (pushed) {
+        showToast('本地数据已同步到云端，其他设备可以访问了');
+      } else {
+        showToast('推送失败，请重试');
+      }
+    } else {
+      showToast('连接成功，云端暂无数据');
+    }
   } else {
     showToast('连接失败，请检查配置');
   }
