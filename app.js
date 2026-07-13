@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.7 - 本地数据全量推送云端 + 手动推送按钮
+// v2.8 - GitHub 数据同步方案：零配置跨设备同步，数据存仓库 data.json
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -24,40 +24,40 @@ const TYPE_CONFIG = {
   other:   { label: '其他', icon: 'file-text', color: '#6B7280', cls: 'type-other' },
 };
 
-// 字段映射：JS camelCase <-> Supabase snake_case
-const FIELD_MAP = {
-  orgs: { orgId:'org_id', createdAt:'created_at', detailUrl:'detail_url', sortOrder:'sort_order' },
-  client_persons: { orgId:'org_id', parentId:'parent_id', myContactId:'my_contact_id', status:'status' },
-  my_users: { status:'status' },
-  records: { myUserId:'my_user_id', clientPersonIds:'client_person_ids', createdAt:'created_at' },
-};
-
 let DB = { orgs: [], clientPersons: [], myUsers: [], records: [] };
 let selectedTreeNode = null;
 let selectedClientPersons = new Set();
 let dragState = null; // { personId, sourceOrgId }
 
 // =====================================================
-// 云端同步层 (Supabase)
+// 云端同步层 (GitHub — 数据存 data.json，零额外服务)
 // =====================================================
+const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
+const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
+
+function b64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
 const Cloud = {
-  client: null,
+  token: null,
   enabled: false,
   status: 'off', // off | on | err | spin
+  _saveTimer: null,
 
   getConfig() {
     try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); }
     catch { return {}; }
   },
 
-  setConfig(url, key) {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, key }));
+  setConfig(token) {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({ token }));
     this.init();
   },
 
   clearConfig() {
     localStorage.removeItem(CONFIG_KEY);
-    this.client = null;
+    this.token = null;
     this.enabled = false;
     this.status = 'off';
     this.updateIndicator();
@@ -65,15 +65,13 @@ const Cloud = {
 
   init() {
     const cfg = this.getConfig();
-    if (cfg.url && cfg.key && window.supabase) {
-      try {
-        this.client = supabase.createClient(cfg.url, cfg.key);
-        this.enabled = true;
-        this.status = 'on';
-      } catch (e) {
-        this.status = 'err';
-      }
+    if (cfg.token) {
+      this.token = cfg.token;
+      this.enabled = true;
+      this.status = 'on';
     } else {
+      this.token = null;
+      this.enabled = false;
       this.status = 'off';
     }
     this.updateIndicator();
@@ -87,44 +85,16 @@ const Cloud = {
     if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
-  // camelCase -> snake_case
-  toRow(table, obj) {
-    const map = FIELD_MAP[table] || {};
-    const row = {};
-    for (const [k, v] of Object.entries(obj)) {
-      row[map[k] || k] = v;
-    }
-    return row;
-  },
-
-  // snake_case -> camelCase
-  fromRow(table, row) {
-    const map = FIELD_MAP[table] || {};
-    const inv = Object.fromEntries(Object.entries(map).map(([c,s]) => [s,c]));
-    const obj = {};
-    for (const [k, v] of Object.entries(row)) {
-      obj[inv[k] || k] = v;
-    }
-    return obj;
-  },
-
+  // 从 raw URL 读取 data.json（无需认证，任何设备都能读）
   async loadAll() {
     if (!this.enabled) return null;
     this.status = 'spin'; this.updateIndicator();
     try {
-      const [orgs, myUsers, persons, records] = await Promise.all([
-        this.client.from('orgs').select('*'),
-        this.client.from('my_users').select('*'),
-        this.client.from('client_persons').select('*'),
-        this.client.from('records').select('*'),
-      ]);
+      const res = await fetch(CLOUD_RAW_URL + '?t=' + Date.now());
+      if (!res.ok) { this.status = 'err'; this.updateIndicator(); return null; }
+      const data = await res.json();
       this.status = 'on'; this.updateIndicator();
-      return {
-        orgs: (orgs.data || []).map(r => this.fromRow('orgs', r)),
-        myUsers: (myUsers.data || []).map(r => this.fromRow('my_users', r)),
-        clientPersons: (persons.data || []).map(r => this.fromRow('client_persons', r)),
-        records: (records.data || []).map(r => this.fromRow('records', r)),
-      };
+      return data;
     } catch (e) {
       console.error('Cloud load failed:', e);
       this.status = 'err'; this.updateIndicator();
@@ -132,64 +102,60 @@ const Cloud = {
     }
   },
 
-  async upsert(table, obj) {
-    if (!this.enabled) return;
-    try { await this.client.from(table).upsert(this.toRow(table, obj)); } catch (e) { console.error('Cloud upsert failed:', e); }
-  },
-
-  async remove(table, id) {
-    if (!this.enabled) return;
-    try { await this.client.from(table).delete().eq('id', id); } catch (e) { console.error('Cloud delete failed:', e); }
-  },
-
-  // 全量推送本地数据到云端
-  async pushAll(db) {
-    if (!this.enabled) return false;
+  // 全量写入 data.json 到 GitHub（需 Token）
+  async saveAll(db) {
+    if (!this.enabled || !this.token) return false;
     this.status = 'spin'; this.updateIndicator();
     try {
-      // 先清空云端旧数据，再全量写入（避免 ID 冲突残留）
-      await this.client.from('records').delete().neq('id', '__keep__');
-      await this.client.from('client_persons').delete().neq('id', '__keep__');
-      await this.client.from('my_users').delete().neq('id', '__keep__');
-      await this.client.from('orgs').delete().neq('id', '__keep__');
-
-      const rowsOrgs = db.orgs.map(o => this.toRow('orgs', o));
-      const rowsMyUsers = db.myUsers.map(u => this.toRow('my_users', u));
-      const rowsPersons = db.clientPersons.map(p => this.toRow('client_persons', p));
-      const rowsRecords = db.records.map(r => this.toRow('records', r));
-
-      if (rowsOrgs.length) await this.client.from('orgs').upsert(rowsOrgs);
-      if (rowsMyUsers.length) await this.client.from('my_users').upsert(rowsMyUsers);
-      if (rowsPersons.length) await this.client.from('client_persons').upsert(rowsPersons);
-      if (rowsRecords.length) await this.client.from('records').upsert(rowsRecords);
-
-      this.status = 'on'; this.updateIndicator();
-      return true;
+      const headers = { Authorization: 'Bearer ' + this.token, 'Accept': 'application/vnd.github+json' };
+      // 获取当前文件 SHA（存在则更新，不存在则新建）
+      let sha = null;
+      try {
+        const getRes = await fetch(CLOUD_API_URL + '?ref=gh-pages', { headers });
+        if (getRes.ok) { const info = await getRes.json(); sha = info.sha; }
+      } catch(e) {}
+      const content = b64(JSON.stringify(db));
+      const body = { message: 'Update data', content, branch: 'gh-pages' };
+      if (sha) body.sha = sha;
+      const putRes = await fetch(CLOUD_API_URL, {
+        method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      this.status = putRes.ok ? 'on' : 'err'; this.updateIndicator();
+      return putRes.ok;
     } catch (e) {
-      console.error('Cloud pushAll failed:', e);
+      console.error('Cloud save failed:', e);
       this.status = 'err'; this.updateIndicator();
       return false;
     }
   },
+
+  // 延迟推送（防抖 2 秒，避免频繁 API 调用）
+  scheduleSave(db) {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this.saveAll(db), 2000);
+  },
 };
 
 // =====================================================
-// 数据持久化（本地 + 云端同步）
+// 数据持久化（本地 + GitHub 云端同步）
 // =====================================================
-function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
+function saveLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  Cloud.scheduleSave(DB);
+}
 
-async function syncToCloud(table, obj) { await Cloud.upsert(table, obj); }
-async function removeFromCloud(table, id) { await Cloud.remove(table, id); }
-async function pushAllToCloud() { return await Cloud.pushAll(DB); }
+function syncToCloud() { Cloud.scheduleSave(DB); }
+function removeFromCloud() { Cloud.scheduleSave(DB); }
 
 async function pushLocalToCloud() {
-  if (!Cloud.enabled) { showToast('请先配置云同步'); return; }
+  if (!Cloud.enabled) { showToast('请先配置 GitHub Token'); return; }
   showToast('正在推送本地数据到云端...');
-  const pushed = await pushAllToCloud();
-  if (pushed) {
+  const ok = await Cloud.saveAll(DB);
+  if (ok) {
     showToast('本地数据已同步到云端，其他设备可以访问了');
   } else {
-    showToast('推送失败，请检查网络连接');
+    showToast('推送失败，请检查 Token 是否有效');
   }
 }
 
@@ -251,13 +217,7 @@ function initSampleData() {
     ],
   };
   saveLocal();
-  // 同步到云端
-  if (Cloud.enabled) {
-    DB.orgs.forEach(o => syncToCloud('orgs', o));
-    DB.myUsers.forEach(u => syncToCloud('my_users', u));
-    DB.clientPersons.forEach(p => syncToCloud('client_persons', p));
-    DB.records.forEach(r => syncToCloud('records', r));
-  }
+  Cloud.scheduleSave(DB);
 }
 
 async function loadData() {
@@ -1832,15 +1792,11 @@ function openSyncModal() {
       <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
         <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置
       </h3>
-      <p class="text-sm text-gray-500 mb-4">配置 Supabase 云数据库后，手机和电脑访问同一网址即可数据实时同步。<a href="https://supabase.com" target="_blank" class="text-indigo-500 underline">注册 Supabase</a>，执行项目内的 <code class="bg-gray-100 px-1 rounded">supabase.sql</code> 建表，然后填入下方信息。</p>
+      <p class="text-sm text-gray-500 mb-4">填入 GitHub Personal Access Token，数据即自动存到仓库 <code class="bg-gray-100 px-1 rounded">data.json</code> 中。所有设备打开同一网址就能看到最新内容，<strong>无需注册任何其他服务</strong>。<br><a href="https://github.com/settings/tokens/new?scopes=repo&description=Shangtuo%20CRM%20sync" target="_blank" class="text-indigo-500 underline">点此快速生成 Token</a>（勾选 repo 权限即可）</p>
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Supabase URL</label>
-          <input type="text" id="syncUrl" value="${cfg.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">anon public key</label>
-          <textarea id="syncKey" rows="3" placeholder="eyJhbGciOi..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm resize-none">${cfg.key || ''}</textarea>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">GitHub Personal Access Token</label>
+          <input type="password" id="syncToken" value="${cfg.token || ''}" placeholder="ghp_..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
         </div>
         <div class="flex items-center gap-2 text-sm">
           <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
@@ -1860,10 +1816,9 @@ function openSyncModal() {
 }
 
 async function saveSyncConfig() {
-  const url = document.getElementById('syncUrl').value.trim();
-  const key = document.getElementById('syncKey').value.trim();
-  if (!url || !key) { showToast('请填写完整配置'); return; }
-  Cloud.setConfig(url, key);
+  const token = document.getElementById('syncToken').value.trim();
+  if (!token) { showToast('请输入 GitHub Token'); return; }
+  Cloud.setConfig(token);
   closeModal();
   showToast('配置已保存，正在连接云端...');
   const ok = await loadFromCloud();
@@ -1872,23 +1827,23 @@ async function saveSyncConfig() {
     showToast('云端数据已加载');
   } else if (Cloud.enabled) {
     // 云端无数据，检查本地是否有真实数据需要推送
-    const hasRealData = DB.orgs.some(o => !o.id.startsWith('org'))  // 不是示例数据 org1/org2
+    const hasRealData = DB.orgs.some(o => !o.id.startsWith('org'))
       || DB.myUsers.some(u => !u.id.startsWith('my'))
       || DB.clientPersons.some(p => !p.id.startsWith('cp'))
       || DB.records.length > 0;
     if (hasRealData) {
       showToast('正在推送本地数据到云端...');
-      const pushed = await pushAllToCloud();
-      if (pushed) {
+      const ok2 = await Cloud.saveAll(DB);
+      if (ok2) {
         showToast('本地数据已同步到云端，其他设备可以访问了');
       } else {
-        showToast('推送失败，请重试');
+        showToast('推送失败，请检查 Token 是否有 repo 权限');
       }
     } else {
       showToast('连接成功，云端暂无数据');
     }
   } else {
-    showToast('连接失败，请检查配置');
+    showToast('连接失败，请检查 Token');
   }
 }
 
