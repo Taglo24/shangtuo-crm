@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v4.0.2 - GitHub Pages 同域同步 + jsdelivr CDN 双通道容错 + 机构排序云端同步
+// v4.0.4 - 本地修改时间戳保护，刷新不再被旧云端数据覆盖
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -135,6 +135,7 @@ function pushLocalToCloud() { Cloud.saveAll(DB).then(ok => { if (ok) showToast('
 // 数据持久化（本地 + GitHub data.json 同步）
 // =====================================================
 function saveLocal() {
+  DB._lastModified = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
   Cloud.scheduleSave(DB);
 }
@@ -156,6 +157,15 @@ async function pushLocalToCloud() {
 async function loadFromCloud() {
   const data = await Cloud.loadAll();
   if (data && (data.orgs.length || data.myUsers.length || data.clientPersons.length || data.records.length)) {
+    // 比较时间戳：本地数据的修改时间
+    const localRaw = localStorage.getItem(STORAGE_KEY);
+    const localTime = localRaw ? (() => { try { return JSON.parse(localRaw)._lastModified || 0; } catch { return 0; } })() : 0;
+    const cloudTime = data._lastModified || 0;
+    // 云端数据更新才覆盖本地（防止云端未写入时回退本地修改）
+    if (localTime > 0 && cloudTime <= localTime) {
+      console.log('本地数据更新，跳过云端同步');
+      return false;
+    }
     DB = data;
     saveLocal();
     return true;
@@ -341,7 +351,6 @@ function reorderOrgs(dragId, dropId) {
   });
 
   saveLocal();
-  syncToCloud();   // 推送新顺序到云端
   renderDashboard();
   showToast('机构顺序已更新');
 }
