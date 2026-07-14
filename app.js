@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v4.0.2 - GitHub Pages 同域同步 + jsdelivr CDN 双通道容错，网络波动不报异常
+// v4.0.2 - GitHub Pages 同域同步 + jsdelivr CDN 双通道容错 + 机构排序云端同步
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -341,6 +341,7 @@ function reorderOrgs(dragId, dropId) {
   });
 
   saveLocal();
+  syncToCloud();   // 推送新顺序到云端
   renderDashboard();
   showToast('机构顺序已更新');
 }
