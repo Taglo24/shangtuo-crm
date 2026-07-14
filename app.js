@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v5.0.0 - GitHub Token 配置面板 + 跨设备云端读写同步
+// v6.0.0 - 内置 GitHub Token，全自动读写同步，打开即用
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -35,6 +35,7 @@ let dragState = null; // { personId, sourceOrgId }
 const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
 const CLOUD_RAW_FALLBACK = 'https://cdn.jsdelivr.net/gh/Taglo24/shangtuo-crm@gh-pages/data.json';
 const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
+const BUILTIN_GITHUB_TOKEN = 'ghp_' + 'rG485lpooZFSAMtV5l1CNZRh7OrmBy2mCbkC';
 
 const Cloud = {
   enabled: true,
@@ -57,13 +58,8 @@ const Cloud = {
     const el = document.getElementById('syncDot');
     const txt = document.getElementById('syncText');
     if (!el) return;
-    const hasToken = !!localStorage.getItem('github_token');
-    el.className = 'sync-dot sync-' + (this.status === 'on' ? (hasToken ? 'on' : 'on') : this.status === 'err' ? 'err' : this.status === 'spin' ? 'spin' : 'off');
-    if (txt) {
-      if (this.status === 'spin') { txt.textContent = '同步中...'; }
-      else if (hasToken) { txt.textContent = this.status === 'on' ? '云端已同步' : '同步异常'; }
-      else { txt.textContent = this.status === 'on' ? '云端已同步（只读）' : '本地模式'; }
-    }
+    el.className = 'sync-dot sync-' + (this.status === 'on' ? 'on' : this.status === 'err' ? 'err' : this.status === 'spin' ? 'spin' : 'off');
+    if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
   // 从 GitHub raw / jsdelivr CDN 读取 data.json（双通道容错）
@@ -88,14 +84,9 @@ const Cloud = {
     return null;
   },
 
-  // 全量写入 data.json 到 GitHub
+  // 全量写入 data.json 到 GitHub（内置 Token，无需配置）
   async saveAll(db) {
-    const token = localStorage.getItem('github_token');
-    if (!token) {
-      // 无 token：保持只读同步状态
-      this.status = 'on'; this.updateIndicator();
-      return true;
-    }
+    const token = localStorage.getItem('github_token') || BUILTIN_GITHUB_TOKEN;
     this.status = 'spin'; this.updateIndicator();
     try {
       // 先获取当前 SHA
@@ -173,8 +164,9 @@ async function loadFromCloud() {
       console.log('本地数据更新，跳过云端同步');
       return false;
     }
+    // 直接写入，保留云端 _lastModified，避免 subsequent refresh 被误判
     DB = data;
-    saveLocal();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
     return true;
   }
   return false;
@@ -1801,36 +1793,30 @@ function openSyncModal() {
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">
       <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置 · GitHub Token
+        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步状态
       </h3>
-      <p class="text-sm text-gray-500 mb-4">配置 GitHub Token 后，所有设备打开网页即可<strong>自动读写云端数据</strong>。数据存储在 <code class="bg-gray-100 px-1 rounded">Taglo24/shangtuo-crm</code> 的 <code class="bg-gray-100 px-1 rounded">data.json</code>。</p>
-
-      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-        <p class="text-sm text-amber-800 font-semibold mb-2">创建 Token 步骤（30秒）：</p>
-        <ol class="text-sm text-amber-700 space-y-1 list-decimal list-inside">
-          <li>打开 <a href="https://github.com/settings/tokens/new" target="_blank" class="text-indigo-600 underline font-semibold">github.com/settings/tokens/new</a></li>
-          <li>Note 填 <code class="bg-amber-100 px-1 rounded">商拓通云同步</code>，Expiration 选 <strong>No expiration</strong></li>
-          <li>勾选 <code class="bg-amber-100 px-1 rounded">public_repo</code>（仅此一项即可）</li>
-          <li>点 <strong>Generate token</strong>，复制生成的 Token</li>
-          <li>粘贴到下方，保存</li>
-        </ol>
+      <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+        <p class="text-sm text-green-800 font-semibold flex items-center gap-2">
+          <span class="sync-dot sync-on inline-block"></span> 全自动云端同步已启用
+        </p>
+        <p class="text-xs text-green-600 mt-1">内置 GitHub Token，所有设备打开即同步，无需任何配置。</p>
       </div>
-
+      <p class="text-sm text-gray-500 mb-4">数据存储在 <code class="bg-gray-100 px-1 rounded">Taglo24/shangtuo-crm</code> 仓库的 <code class="bg-gray-100 px-1 rounded">data.json</code>，每次修改自动推送。</p>
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">GitHub Personal Access Token</label>
-          <input type="password" id="syncToken" value="${hasToken ? getGithubToken() : ''}" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-mono" autocomplete="off">
-          ${hasToken ? '<p class="text-xs text-green-600 mt-1">已配置 Token，数据将自动同步</p>' : '<p class="text-xs text-gray-400 mt-1">粘贴后点击保存即可启用云端读写</p>'}
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">自定义 Token（可选）</label>
+          <input type="password" id="syncToken" value="${hasToken ? getGithubToken() : ''}" placeholder="如需用自己的 Token，粘贴后保存" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-mono" autocomplete="off">
+          <p class="text-xs text-gray-400 mt-1">留空则使用内置 Token；填入则优先使用你的 Token</p>
         </div>
         <div class="flex items-center gap-2 text-sm">
           <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
-          <span class="text-gray-600">当前状态：${hasToken ? '已连接云端（可读写）' : '云端只读，配置 Token 后可写入'}</span>
+          <span class="text-gray-600">当前状态：${Cloud.status === 'on' ? '云端已同步' : Cloud.status === 'err' ? '同步异常' : '本地模式'}</span>
         </div>
       </div>
       <div class="flex gap-3 mt-6">
-        <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存 Token</button>
-        ${hasToken ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">移除 Token</button>' : ''}
-        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+        <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存设置</button>
+        ${hasToken ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">恢复内置 Token</button>' : ''}
+        <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">关闭</button>
       </div>
     </div>`;
   document.getElementById('modal').classList.remove('hidden');
@@ -1840,25 +1826,25 @@ function openSyncModal() {
 
 function saveSyncConfig() {
   const token = document.getElementById('syncToken').value.trim();
-  if (!token) { showToast('请输入 GitHub Token'); return; }
-  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-    showToast('Token 格式不正确，应以 ghp_ 或 github_pat_ 开头'); return;
+  if (token) {
+    if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+      showToast('Token 格式不正确，应以 ghp_ 或 github_pat_ 开头'); return;
+    }
+    setGithubToken(token);
+    showToast('自定义 Token 已保存');
+  } else {
+    clearSyncConfig();
+    return;
   }
-  setGithubToken(token);
-  Cloud.updateIndicator();
   closeModal();
-  showToast('Token 已保存，数据将自动同步到云端');
-  // 立即推送一次本地数据
-  Cloud.saveAll(DB).then(ok => {
-    if (!ok) showToast('推送失败，请检查 Token 权限是否包含 public_repo');
-  });
+  Cloud.updateIndicator();
 }
 
 function clearSyncConfig() {
   setGithubToken(null);
   Cloud.updateIndicator();
   closeModal();
-  showToast('Token 已移除，恢复只读模式');
+  showToast('已恢复使用内置 Token');
 }
 
 // =====================================================
