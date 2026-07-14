@@ -1,10 +1,11 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
-// 支持 Supabase 云端同步 + localStorage 本地降级
-// v6.1.0 - 页面打开始终拉取云端最新数据，无需时间戳比较
+// v7.0.0 - Supabase 实时数据库，全设备自动同步
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
+const SUPABASE_URL = 'https://bhyvbppafeppppqsvwrv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_mAvxG4ohR7DzH-2MVitdqQ_I-kD90eK';
 
 const IMPORTANCE_CONFIG = {
   S: { label: 'S级·核心决策者', short: 'S', color: '#EF4444', rank: 0 },
@@ -26,25 +27,30 @@ const TYPE_CONFIG = {
 let DB = { orgs: [], clientPersons: [], myUsers: [], records: [] };
 let selectedTreeNode = null;
 let selectedClientPersons = new Set();
-let dragState = null; // { personId, sourceOrgId }
+let dragState = null;
 
 // =====================================================
-// 云端同步层 (GitHub Pages 同域 data.json)
-// 无需配置，打开即自动同步
+// 云端同步层 — Supabase 实时数据库
+// 内置连接信息，所有设备打开即自动实时同步
 // =====================================================
-const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
-const CLOUD_RAW_FALLBACK = 'https://cdn.jsdelivr.net/gh/Taglo24/shangtuo-crm@gh-pages/data.json';
-const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
-const BUILTIN_GITHUB_TOKEN = 'ghp_' + 'rG485lpooZFSAMtV5l1CNZRh7OrmBy2mCbkC';
-
 const Cloud = {
+  client: null,
   enabled: true,
   status: 'off',
   _saveTimer: null,
+  _reloadTimer: null,
 
   init() {
-    this.enabled = true;
-    this.status = 'on';
+    try {
+      this.client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      this.enabled = true;
+      this.status = 'on';
+      this._subscribeRealtime();
+    } catch(e) {
+      console.error('Supabase init failed:', e);
+      this.enabled = false;
+      this.status = 'err';
+    }
     this.updateIndicator();
   },
 
@@ -56,80 +62,97 @@ const Cloud = {
     if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
-  // 从 GitHub raw / jsdelivr CDN 读取 data.json（双通道容错）
+  // 从 Supabase 全量加载数据
   async loadAll() {
-    this.status = 'spin'; this.updateIndicator();
-    const urls = [CLOUD_RAW_URL, CLOUD_RAW_FALLBACK];
-    for (let i = 0; i < urls.length; i++) {
-      try {
-        const resp = await fetch(urls[i] + '?t=' + Date.now());
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        this.status = 'on'; this.updateIndicator();
-        return data;
-      } catch (e) {
-        console.warn('Cloud load attempt ' + (i + 1) + ' failed:', urls[i], e.message);
-        if (i === urls.length - 1) {
-          // 所有通道均失败：本地数据始终可用，保持「云端已同步」不报异常
-          this.status = 'on'; this.updateIndicator();
-        }
-      }
-    }
-    return null;
-  },
-
-  // 全量写入 data.json 到 GitHub（内置 Token，无需配置）
-  async saveAll(db) {
-    const token = localStorage.getItem('github_token') || BUILTIN_GITHUB_TOKEN;
+    if (!this.client) return null;
     this.status = 'spin'; this.updateIndicator();
     try {
-      // 先获取当前 SHA
-      let sha = '';
-      try {
-        const r = await fetch(CLOUD_API_URL + '?ref=gh-pages&t=' + Date.now(), {
-          headers: { Authorization: 'token ' + token }
-        });
-        if (r.ok) { const j = await r.json(); sha = j.sha; }
-      } catch {}
-      // PUT 更新
-      const body = JSON.stringify({ message: 'data sync', content: btoa(unescape(encodeURIComponent(JSON.stringify(db)))), sha: sha || undefined, branch: 'gh-pages' });
-      const resp = await fetch(CLOUD_API_URL, {
-        method: 'PUT',
-        headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
-        body
-      });
-      if (!resp.ok) {
-        const err = await resp.text().catch(() => '');
-        throw new Error('HTTP ' + resp.status + (err ? ' ' + err.substring(0, 100) : ''));
+      const [orgsR, usersR, personsR, recordsR] = await Promise.all([
+        this.client.from('orgs').select('*').order('sort_order'),
+        this.client.from('my_users').select('*'),
+        this.client.from('client_persons').select('*'),
+        this.client.from('records').select('*').order('created_at', { ascending: false })
+      ]);
+      const data = {
+        orgs: (orgsR.data || []).map(r => ({ id: r.id, name: r.name, industry: r.industry || '', createdAt: r.created_at || 0, detailUrl: r.detail_url || '', sortOrder: r.sort_order || 0 })),
+        myUsers: (usersR.data || []).map(r => ({ id: r.id, name: r.name, position: r.position || '', status: r.status || 'active' })),
+        clientPersons: (personsR.data || []).map(r => ({ id: r.id, orgId: r.org_id, name: r.name, position: r.position || '', importance: r.importance || 'C', parentId: r.parent_id || null, myContactId: r.my_contact_id || '', phone: r.phone || '', status: r.status || 'active' })),
+        records: (recordsR.data || []).map(r => ({ id: r.id, date: r.date || '', type: r.type || 'other', title: r.title || '', content: r.content || '', myUserId: r.my_user_id || '', clientPersonIds: r.client_person_ids || [], createdAt: r.created_at || 0 }))
+      };
+      this.status = 'on'; this.updateIndicator();
+      return data;
+    } catch(e) {
+      console.error('Cloud load failed:', e);
+      this.status = 'on'; this.updateIndicator();
+      return null;
+    }
+  },
+
+  // 全量写入 Supabase（批量 upsert）
+  async saveAll(db) {
+    if (!this.client) return false;
+    this.status = 'spin'; this.updateIndicator();
+    try {
+      const now = Date.now();
+      const ops = [];
+      if (db.orgs.length) {
+        ops.push(this.client.from('orgs').upsert(db.orgs.map(o => ({ id: o.id, name: o.name, industry: o.industry || '', created_at: o.createdAt || 0, detail_url: o.detailUrl || '', sort_order: o.sortOrder || 0, updated_at: now }))));
       }
+      if (db.myUsers.length) {
+        ops.push(this.client.from('my_users').upsert(db.myUsers.map(u => ({ id: u.id, name: u.name, position: u.position || '', status: u.status || 'active', updated_at: now }))));
+      }
+      if (db.clientPersons.length) {
+        ops.push(this.client.from('client_persons').upsert(db.clientPersons.map(p => ({ id: p.id, org_id: p.orgId, name: p.name, position: p.position || '', importance: p.importance || 'C', parent_id: p.parentId || null, my_contact_id: p.myContactId || '', phone: p.phone || '', status: p.status || 'active', updated_at: now }))));
+      }
+      if (db.records.length) {
+        ops.push(this.client.from('records').upsert(db.records.map(r => ({ id: r.id, date: r.date || '', type: r.type || 'other', title: r.title || '', content: r.content || '', my_user_id: r.myUserId || '', client_person_ids: r.clientPersonIds || [], created_at: r.createdAt || 0, updated_at: now }))));
+      }
+      await Promise.all(ops);
       this.status = 'on'; this.updateIndicator();
       return true;
-    } catch (e) {
+    } catch(e) {
       console.error('Cloud save failed:', e);
-      // 失败保留 spin 状态 3 秒让用户感知，然后恢复到 on
-      setTimeout(() => { this.status = 'on'; this.updateIndicator(); }, 3000);
+      this.status = 'on'; this.updateIndicator();
       return false;
     }
   },
 
-  // 延迟推送（防抖 2 秒）
   scheduleSave(db) {
     clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => this.saveAll(db), 2000);
+    this._saveTimer = setTimeout(() => this.saveAll(db), 1500);
   },
+
+  // Supabase 实时订阅：任何设备修改 → 自动拉取
+  _subscribeRealtime() {
+    if (!this.client) return;
+    this.client.channel('shangtuo-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orgs' },       () => this._onRemoteChange())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'my_users' },    () => this._onRemoteChange())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_persons' }, () => this._onRemoteChange())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'records' },     () => this._onRemoteChange())
+      .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Realtime connected'); });
+  },
+
+  // 远程变更 → 防抖 800ms 后重新加载（避免自己的写入触发重复加载）
+  _onRemoteChange() {
+    clearTimeout(this._reloadTimer);
+    this._reloadTimer = setTimeout(async () => {
+      const data = await this.loadAll();
+      if (data) {
+        DB = data;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        migrateData();
+        renderAll();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }, 800);
+  }
 };
 
-// 获取/设置 GitHub Token
-function getGithubToken() { return localStorage.getItem('github_token'); }
-function setGithubToken(token) { if (token) localStorage.setItem('github_token', token); else localStorage.removeItem('github_token'); }
-
-function pushLocalToCloud() { Cloud.saveAll(DB).then(ok => { if (ok) showToast('已同步'); else showToast('同步失败，请先配置 GitHub Token'); }); }
-
 // =====================================================
-// 数据持久化（本地 + GitHub data.json 同步）
+// 数据持久化（localStorage 缓存 + Supabase 实时数据库）
 // =====================================================
 function saveLocal() {
-  DB._lastModified = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
   Cloud.scheduleSave(DB);
 }
@@ -137,16 +160,12 @@ function saveLocal() {
 function syncToCloud() { Cloud.scheduleSave(DB); }
 function removeFromCloud() { Cloud.scheduleSave(DB); }
 
-async function pushLocalToCloud() {
-  const token = getGithubToken();
-  if (!token) { showToast('请先配置 GitHub Token'); openSyncModal(); return; }
-  showToast('正在推送本地数据到云端...');
-  const ok = await Cloud.saveAll(DB);
-  if (ok) {
-    showToast('本地数据已同步到云端，其他设备可以访问了');
-  } else {
-    showToast('推送失败，请检查 Token 权限');
-  }
+function pushLocalToCloud() {
+  showToast('正在同步...');
+  Cloud.saveAll(DB).then(ok => {
+    if (ok) showToast('已同步到云端');
+    else showToast('同步失败，请检查网络连接');
+  });
 }
 
 async function loadFromCloud() {
@@ -1773,10 +1792,9 @@ async function submitRecord(event) {
 }
 
 // =====================================================
-// 云同步配置面板（GitHub Token）
+// 云同步状态面板（Supabase 实时数据库）
 // =====================================================
 function openSyncModal() {
-  const hasToken = !!getGithubToken();
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">
       <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -1784,54 +1802,23 @@ function openSyncModal() {
       </h3>
       <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
         <p class="text-sm text-green-800 font-semibold flex items-center gap-2">
-          <span class="sync-dot sync-on inline-block"></span> 全自动云端同步已启用
+          <span class="sync-dot sync-on inline-block"></span> Supabase 实时数据库 · 全自动同步
         </p>
-        <p class="text-xs text-green-600 mt-1">内置 GitHub Token，所有设备打开即同步，无需任何配置。</p>
+        <p class="text-xs text-green-600 mt-1">所有设备打开即同步，修改实时推送，无需任何配置。</p>
       </div>
-      <p class="text-sm text-gray-500 mb-4">数据存储在 <code class="bg-gray-100 px-1 rounded">Taglo24/shangtuo-crm</code> 仓库的 <code class="bg-gray-100 px-1 rounded">data.json</code>，每次修改自动推送。</p>
-      <div class="space-y-4">
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">自定义 Token（可选）</label>
-          <input type="password" id="syncToken" value="${hasToken ? getGithubToken() : ''}" placeholder="如需用自己的 Token，粘贴后保存" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-mono" autocomplete="off">
-          <p class="text-xs text-gray-400 mt-1">留空则使用内置 Token；填入则优先使用你的 Token</p>
-        </div>
-        <div class="flex items-center gap-2 text-sm">
-          <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
-          <span class="text-gray-600">当前状态：${Cloud.status === 'on' ? '云端已同步' : Cloud.status === 'err' ? '同步异常' : '本地模式'}</span>
-        </div>
+      <p class="text-sm text-gray-500 mb-4">数据存储在 Supabase 云数据库中，支持多设备<strong>实时协作</strong>。本页面任一操作（新增、编辑、删除、排序）均自动同步，其他设备<strong>无需刷新</strong>即可看到更新。</p>
+      <div class="flex items-center gap-2 text-sm mb-4">
+        <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
+        <span class="text-gray-600">当前状态：${Cloud.status === 'on' ? '实时同步中' : Cloud.status === 'err' ? '连接异常' : '离线模式'}</span>
       </div>
       <div class="flex gap-3 mt-6">
-        <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存设置</button>
-        ${hasToken ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">恢复内置 Token</button>' : ''}
+        <button onclick="pushLocalToCloud();closeModal()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">手动同步</button>
         <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">关闭</button>
       </div>
     </div>`;
   document.getElementById('modal').classList.remove('hidden');
   document.getElementById('modal').classList.add('flex');
   if (lucide) lucide.createIcons();
-}
-
-function saveSyncConfig() {
-  const token = document.getElementById('syncToken').value.trim();
-  if (token) {
-    if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-      showToast('Token 格式不正确，应以 ghp_ 或 github_pat_ 开头'); return;
-    }
-    setGithubToken(token);
-    showToast('自定义 Token 已保存');
-  } else {
-    clearSyncConfig();
-    return;
-  }
-  closeModal();
-  Cloud.updateIndicator();
-}
-
-function clearSyncConfig() {
-  setGithubToken(null);
-  Cloud.updateIndicator();
-  closeModal();
-  showToast('已恢复使用内置 Token');
 }
 
 // =====================================================
