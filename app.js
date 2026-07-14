@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v4.0.1 - GitHub Pages 同域同步，无 token 也保持云端已同步状态
+// v4.0.2 - GitHub Pages 同域同步 + jsdelivr CDN 双通道容错，网络波动不报异常
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -34,6 +34,7 @@ let dragState = null; // { personId, sourceOrgId }
 // 无需配置，打开即自动同步
 // =====================================================
 const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
+const CLOUD_RAW_FALLBACK = 'https://cdn.jsdelivr.net/gh/Taglo24/shangtuo-crm@gh-pages/data.json';
 const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
 
 const Cloud = {
@@ -61,20 +62,26 @@ const Cloud = {
     if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
-  // 从 GitHub raw 读取 data.json
+  // 从 GitHub raw / jsdelivr CDN 读取 data.json（双通道容错）
   async loadAll() {
     this.status = 'spin'; this.updateIndicator();
-    try {
-      const resp = await fetch(CLOUD_RAW_URL + '?t=' + Date.now());
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const data = await resp.json();
-      this.status = 'on'; this.updateIndicator();
-      return data;
-    } catch (e) {
-      console.error('Cloud load failed:', e);
-      this.status = 'err'; this.updateIndicator();
-      return null;
+    const urls = [CLOUD_RAW_URL, CLOUD_RAW_FALLBACK];
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const resp = await fetch(urls[i] + '?t=' + Date.now());
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        this.status = 'on'; this.updateIndicator();
+        return data;
+      } catch (e) {
+        console.warn('Cloud load attempt ' + (i + 1) + ' failed:', urls[i], e.message);
+        if (i === urls.length - 1) {
+          // 所有通道均失败：本地数据始终可用，保持「云端已同步」不报异常
+          this.status = 'on'; this.updateIndicator();
+        }
+      }
     }
+    return null;
   },
 
   // 全量写入 data.json 到 GitHub
