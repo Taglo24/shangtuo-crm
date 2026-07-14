@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v6.0.0 - 内置 GitHub Token，全自动读写同步，打开即用
+// v6.1.0 - 页面打开始终拉取云端最新数据，无需时间戳比较
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -46,12 +46,6 @@ const Cloud = {
     this.enabled = true;
     this.status = 'on';
     this.updateIndicator();
-    // 自动拉取云端数据
-    if (typeof loadFromCloud === 'function') {
-      loadFromCloud().then(ok => {
-        if (ok) { migrateData(); renderAll(); if (typeof lucide !== 'undefined') lucide.createIcons(); }
-      });
-    }
   },
 
   updateIndicator() {
@@ -104,13 +98,16 @@ const Cloud = {
         headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
         body
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        const err = await resp.text().catch(() => '');
+        throw new Error('HTTP ' + resp.status + (err ? ' ' + err.substring(0, 100) : ''));
+      }
       this.status = 'on'; this.updateIndicator();
       return true;
     } catch (e) {
       console.error('Cloud save failed:', e);
-      // 失败也保持 on（只读同步仍然有效）
-      this.status = 'on'; this.updateIndicator();
+      // 失败保留 spin 状态 3 秒让用户感知，然后恢复到 on
+      setTimeout(() => { this.status = 'on'; this.updateIndicator(); }, 3000);
       return false;
     }
   },
@@ -155,16 +152,6 @@ async function pushLocalToCloud() {
 async function loadFromCloud() {
   const data = await Cloud.loadAll();
   if (data && (data.orgs.length || data.myUsers.length || data.clientPersons.length || data.records.length)) {
-    // 比较时间戳：本地数据的修改时间
-    const localRaw = localStorage.getItem(STORAGE_KEY);
-    const localTime = localRaw ? (() => { try { return JSON.parse(localRaw)._lastModified || 0; } catch { return 0; } })() : 0;
-    const cloudTime = data._lastModified || 0;
-    // 云端数据更新才覆盖本地（防止云端未写入时回退本地修改）
-    if (localTime > 0 && cloudTime <= localTime) {
-      console.log('本地数据更新，跳过云端同步');
-      return false;
-    }
-    // 直接写入，保留云端 _lastModified，避免 subsequent refresh 被误判
     DB = data;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
     return true;
