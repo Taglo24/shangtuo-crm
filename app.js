@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v4.0 - GitHub Pages 同域同步方案，无跨域，无需配置，打开即用
+// v4.0.1 - GitHub Pages 同域同步，无 token 也保持云端已同步状态
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -79,14 +79,14 @@ const Cloud = {
 
   // 全量写入 data.json 到 GitHub
   async saveAll(db) {
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+      // 无 token：保持只读同步状态
+      this.status = 'on'; this.updateIndicator();
+      return true;
+    }
     this.status = 'spin'; this.updateIndicator();
     try {
-      const token = localStorage.getItem('github_token');
-      if (!token) {
-        console.warn('No GitHub token, skip cloud save');
-        this.status = 'on'; this.updateIndicator();
-        return false;
-      }
       // 先获取当前 SHA
       let sha = '';
       try {
@@ -107,7 +107,8 @@ const Cloud = {
       return true;
     } catch (e) {
       console.error('Cloud save failed:', e);
-      this.status = 'err'; this.updateIndicator();
+      // 失败也保持 on（只读同步仍然有效）
+      this.status = 'on'; this.updateIndicator();
       return false;
     }
   },
