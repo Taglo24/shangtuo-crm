@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.8 - GitHub 数据同步方案：零配置跨设备同步，数据存仓库 data.json
+// v2.9 - 腾讯云 COS 数据同步方案，完全脱离 GitHub
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -30,17 +30,11 @@ let selectedClientPersons = new Set();
 let dragState = null; // { personId, sourceOrgId }
 
 // =====================================================
-// 云端同步层 (GitHub — 数据存 data.json，零额外服务)
+// 云端同步层 (腾讯云 COS — 数据存 data.json)
 // =====================================================
-const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
-const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
-
-function b64(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
 
 const Cloud = {
-  token: null,
+  cos: null,
   enabled: false,
   status: 'off', // off | on | err | spin
   _saveTimer: null,
@@ -50,14 +44,14 @@ const Cloud = {
     catch { return {}; }
   },
 
-  setConfig(token) {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify({ token }));
+  setConfig(secretId, secretKey, bucket, region) {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({ secretId, secretKey, bucket, region }));
     this.init();
   },
 
   clearConfig() {
     localStorage.removeItem(CONFIG_KEY);
-    this.token = null;
+    this.cos = null;
     this.enabled = false;
     this.status = 'off';
     this.updateIndicator();
@@ -65,12 +59,12 @@ const Cloud = {
 
   init() {
     const cfg = this.getConfig();
-    if (cfg.token) {
-      this.token = cfg.token;
+    if (cfg.secretId && cfg.secretKey && cfg.bucket && cfg.region && window.COS) {
+      this.cos = new COS({ SecretId: cfg.secretId, SecretKey: cfg.secretKey });
       this.enabled = true;
       this.status = 'on';
     } else {
-      this.token = null;
+      this.cos = null;
       this.enabled = false;
       this.status = 'off';
     }
@@ -85,14 +79,22 @@ const Cloud = {
     if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
-  // 从 raw URL 读取 data.json（无需认证，任何设备都能读）
+  _bucketInfo() {
+    const cfg = this.getConfig();
+    return { Bucket: cfg.bucket, Region: cfg.region };
+  },
+
+  // 从 COS 读取 data.json
   async loadAll() {
-    if (!this.enabled) return null;
+    if (!this.enabled || !this.cos) return null;
     this.status = 'spin'; this.updateIndicator();
     try {
-      const res = await fetch(CLOUD_RAW_URL + '?t=' + Date.now());
-      if (!res.ok) { this.status = 'err'; this.updateIndicator(); return null; }
-      const data = await res.json();
+      const data = await new Promise((resolve, reject) => {
+        this.cos.getObject({ ...this._bucketInfo(), Key: 'data.json' }, (err, d) => {
+          if (err) reject(err);
+          else resolve(JSON.parse(d.Body));
+        });
+      });
       this.status = 'on'; this.updateIndicator();
       return data;
     } catch (e) {
@@ -102,27 +104,19 @@ const Cloud = {
     }
   },
 
-  // 全量写入 data.json 到 GitHub（需 Token）
+  // 全量写入 data.json 到 COS
   async saveAll(db) {
-    if (!this.enabled || !this.token) return false;
+    if (!this.enabled || !this.cos) return false;
     this.status = 'spin'; this.updateIndicator();
     try {
-      const headers = { Authorization: 'Bearer ' + this.token, 'Accept': 'application/vnd.github+json' };
-      // 获取当前文件 SHA（存在则更新，不存在则新建）
-      let sha = null;
-      try {
-        const getRes = await fetch(CLOUD_API_URL + '?ref=gh-pages', { headers });
-        if (getRes.ok) { const info = await getRes.json(); sha = info.sha; }
-      } catch(e) {}
-      const content = b64(JSON.stringify(db));
-      const body = { message: 'Update data', content, branch: 'gh-pages' };
-      if (sha) body.sha = sha;
-      const putRes = await fetch(CLOUD_API_URL, {
-        method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      await new Promise((resolve, reject) => {
+        this.cos.putObject({ ...this._bucketInfo(), Key: 'data.json', Body: JSON.stringify(db) }, (err, d) => {
+          if (err) reject(err);
+          else resolve(d);
+        });
       });
-      this.status = putRes.ok ? 'on' : 'err'; this.updateIndicator();
-      return putRes.ok;
+      this.status = 'on'; this.updateIndicator();
+      return true;
     } catch (e) {
       console.error('Cloud save failed:', e);
       this.status = 'err'; this.updateIndicator();
@@ -130,7 +124,7 @@ const Cloud = {
     }
   },
 
-  // 延迟推送（防抖 2 秒，避免频繁 API 调用）
+  // 延迟推送（防抖 2 秒）
   scheduleSave(db) {
     clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => this.saveAll(db), 2000);
@@ -138,7 +132,7 @@ const Cloud = {
 };
 
 // =====================================================
-// 数据持久化（本地 + GitHub 云端同步）
+// 数据持久化（本地 + 腾讯云 COS 同步）
 // =====================================================
 function saveLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
@@ -149,13 +143,13 @@ function syncToCloud() { Cloud.scheduleSave(DB); }
 function removeFromCloud() { Cloud.scheduleSave(DB); }
 
 async function pushLocalToCloud() {
-  if (!Cloud.enabled) { showToast('请先配置 GitHub Token'); return; }
+  if (!Cloud.enabled) { showToast('请先配置腾讯云 COS'); return; }
   showToast('正在推送本地数据到云端...');
   const ok = await Cloud.saveAll(DB);
   if (ok) {
     showToast('本地数据已同步到云端，其他设备可以访问了');
   } else {
-    showToast('推送失败，请检查 Token 是否有效');
+    showToast('推送失败，请检查配置');
   }
 }
 
@@ -1790,13 +1784,27 @@ function openSyncModal() {
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">
       <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置
+        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置 · 腾讯云 COS
       </h3>
-      <p class="text-sm text-gray-500 mb-4">填入 GitHub Personal Access Token，数据即自动存到仓库 <code class="bg-gray-100 px-1 rounded">data.json</code> 中。所有设备打开同一网址就能看到最新内容，<strong>无需注册任何其他服务</strong>。<br><a href="https://github.com/settings/tokens/new?scopes=repo&description=Shangtuo%20CRM%20sync" target="_blank" class="text-indigo-500 underline">点此快速生成 Token</a>（勾选 repo 权限即可）</p>
+      <p class="text-sm text-gray-500 mb-4">数据写入 COS 的 <code class="bg-gray-100 px-1 rounded">data.json</code>，所有设备打开网页即可同步。需要<strong>腾讯云 COS Bucket</strong>，并在<strong>密钥管理</strong>中获取 SecretId 和 SecretKey。</p>
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">GitHub Personal Access Token</label>
-          <input type="password" id="syncToken" value="${cfg.token || ''}" placeholder="ghp_..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">SecretId</label>
+          <input type="text" id="syncSecretId" value="${cfg.secretId || ''}" placeholder="AKID..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">SecretKey</label>
+          <input type="password" id="syncSecretKey" value="${cfg.secretKey || ''}" placeholder="•••••" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Bucket</label>
+            <input type="text" id="syncBucket" value="${cfg.bucket || ''}" placeholder="my-bucket-1234567890" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Region</label>
+            <input type="text" id="syncRegion" value="${cfg.region || ''}" placeholder="ap-shanghai" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
+          </div>
         </div>
         <div class="flex items-center gap-2 text-sm">
           <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
@@ -1816,9 +1824,12 @@ function openSyncModal() {
 }
 
 async function saveSyncConfig() {
-  const token = document.getElementById('syncToken').value.trim();
-  if (!token) { showToast('请输入 GitHub Token'); return; }
-  Cloud.setConfig(token);
+  const secretId = document.getElementById('syncSecretId').value.trim();
+  const secretKey = document.getElementById('syncSecretKey').value.trim();
+  const bucket = document.getElementById('syncBucket').value.trim();
+  const region = document.getElementById('syncRegion').value.trim();
+  if (!secretId || !secretKey || !bucket || !region) { showToast('请填写完整配置'); return; }
+  Cloud.setConfig(secretId, secretKey, bucket, region);
   closeModal();
   showToast('配置已保存，正在连接云端...');
   const ok = await loadFromCloud();
@@ -1826,7 +1837,6 @@ async function saveSyncConfig() {
     renderAll();
     showToast('云端数据已加载');
   } else if (Cloud.enabled) {
-    // 云端无数据，检查本地是否有真实数据需要推送
     const hasRealData = DB.orgs.some(o => !o.id.startsWith('org'))
       || DB.myUsers.some(u => !u.id.startsWith('my'))
       || DB.clientPersons.some(p => !p.id.startsWith('cp'))
@@ -1835,15 +1845,15 @@ async function saveSyncConfig() {
       showToast('正在推送本地数据到云端...');
       const ok2 = await Cloud.saveAll(DB);
       if (ok2) {
-        showToast('本地数据已同步到云端，其他设备可以访问了');
+        showToast('本地数据已同步到 COS，其他设备可以访问了');
       } else {
-        showToast('推送失败，请检查 Token 是否有 repo 权限');
+        showToast('推送失败，请检查 CORS 设置');
       }
     } else {
-      showToast('连接成功，云端暂无数据');
+      showToast('连接成功，COS 暂无数据');
     }
   } else {
-    showToast('连接失败，请检查 Token');
+    showToast('连接失败，请检查配置');
   }
 }
 
