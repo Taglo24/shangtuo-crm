@@ -1,7 +1,7 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v2.9 - 腾讯云 COS 数据同步方案，完全脱离 GitHub
+// v4.0 - GitHub Pages 同域同步方案，无跨域，无需配置，打开即用
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -30,45 +30,27 @@ let selectedClientPersons = new Set();
 let dragState = null; // { personId, sourceOrgId }
 
 // =====================================================
-// 云端同步层 (腾讯云 COS — 数据存 data.json)
+// 云端同步层 (GitHub Pages 同域 data.json)
+// 无需配置，打开即自动同步
 // =====================================================
+const CLOUD_RAW_URL = 'https://raw.githubusercontent.com/Taglo24/shangtuo-crm/gh-pages/data.json';
+const CLOUD_API_URL = 'https://api.github.com/repos/Taglo24/shangtuo-crm/contents/data.json';
 
 const Cloud = {
-  cos: null,
-  enabled: false,
-  status: 'off', // off | on | err | spin
+  enabled: true,
+  status: 'off',
   _saveTimer: null,
 
-  getConfig() {
-    try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); }
-    catch { return {}; }
-  },
-
-  setConfig(secretId, secretKey, bucket, region) {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify({ secretId, secretKey, bucket, region }));
-    this.init();
-  },
-
-  clearConfig() {
-    localStorage.removeItem(CONFIG_KEY);
-    this.cos = null;
-    this.enabled = false;
-    this.status = 'off';
-    this.updateIndicator();
-  },
-
   init() {
-    const cfg = this.getConfig();
-    if (cfg.secretId && cfg.secretKey && cfg.bucket && cfg.region && window.COS) {
-      this.cos = new COS({ SecretId: cfg.secretId, SecretKey: cfg.secretKey });
-      this.enabled = true;
-      this.status = 'on';
-    } else {
-      this.cos = null;
-      this.enabled = false;
-      this.status = 'off';
-    }
+    this.enabled = true;
+    this.status = 'on';
     this.updateIndicator();
+    // 自动拉取云端数据
+    if (typeof loadFromCloud === 'function') {
+      loadFromCloud().then(ok => {
+        if (ok) { migrateData(); renderAll(); if (typeof lucide !== 'undefined') lucide.createIcons(); }
+      });
+    }
   },
 
   updateIndicator() {
@@ -79,22 +61,13 @@ const Cloud = {
     if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
   },
 
-  _bucketInfo() {
-    const cfg = this.getConfig();
-    return { Bucket: cfg.bucket, Region: cfg.region };
-  },
-
-  // 从 COS 读取 data.json
+  // 从 GitHub raw 读取 data.json
   async loadAll() {
-    if (!this.enabled || !this.cos) return null;
     this.status = 'spin'; this.updateIndicator();
     try {
-      const data = await new Promise((resolve, reject) => {
-        this.cos.getObject({ ...this._bucketInfo(), Key: 'data.json' }, (err, d) => {
-          if (err) reject(err);
-          else resolve(JSON.parse(d.Body));
-        });
-      });
+      const resp = await fetch(CLOUD_RAW_URL + '?t=' + Date.now());
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
       this.status = 'on'; this.updateIndicator();
       return data;
     } catch (e) {
@@ -104,17 +77,32 @@ const Cloud = {
     }
   },
 
-  // 全量写入 data.json 到 COS
+  // 全量写入 data.json 到 GitHub
   async saveAll(db) {
-    if (!this.enabled || !this.cos) return false;
     this.status = 'spin'; this.updateIndicator();
     try {
-      await new Promise((resolve, reject) => {
-        this.cos.putObject({ ...this._bucketInfo(), Key: 'data.json', Body: JSON.stringify(db) }, (err, d) => {
-          if (err) reject(err);
-          else resolve(d);
+      const token = localStorage.getItem('github_token');
+      if (!token) {
+        console.warn('No GitHub token, skip cloud save');
+        this.status = 'on'; this.updateIndicator();
+        return false;
+      }
+      // 先获取当前 SHA
+      let sha = '';
+      try {
+        const r = await fetch(CLOUD_API_URL + '?ref=gh-pages&t=' + Date.now(), {
+          headers: { Authorization: 'token ' + token }
         });
+        if (r.ok) { const j = await r.json(); sha = j.sha; }
+      } catch {}
+      // PUT 更新
+      const body = JSON.stringify({ message: 'data sync', content: btoa(unescape(encodeURIComponent(JSON.stringify(db)))), sha: sha || undefined, branch: 'gh-pages' });
+      const resp = await fetch(CLOUD_API_URL, {
+        method: 'PUT',
+        headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+        body
       });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
       this.status = 'on'; this.updateIndicator();
       return true;
     } catch (e) {
@@ -131,8 +119,12 @@ const Cloud = {
   },
 };
 
+// 简化：不再需要 COS 配置弹窗
+function saveSyncConfig() {}
+function pushLocalToCloud() { Cloud.saveAll(DB).then(ok => { if (ok) showToast('已同步'); else showToast('同步失败'); }); }
+
 // =====================================================
-// 数据持久化（本地 + 腾讯云 COS 同步）
+// 数据持久化（本地 + GitHub data.json 同步）
 // =====================================================
 function saveLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
