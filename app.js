@@ -1,11 +1,10 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
 // 支持 Supabase 云端同步 + localStorage 本地降级
-// v4.0.4 - 本地修改时间戳保护，刷新不再被旧云端数据覆盖
+// v5.0.0 - GitHub Token 配置面板 + 跨设备云端读写同步
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
-const CONFIG_KEY = 'shangtuo_supabase_config';
 
 const IMPORTANCE_CONFIG = {
   S: { label: 'S级·核心决策者', short: 'S', color: '#EF4444', rank: 0 },
@@ -58,8 +57,13 @@ const Cloud = {
     const el = document.getElementById('syncDot');
     const txt = document.getElementById('syncText');
     if (!el) return;
-    el.className = 'sync-dot sync-' + (this.status === 'on' ? 'on' : this.status === 'err' ? 'err' : this.status === 'spin' ? 'spin' : 'off');
-    if (txt) txt.textContent = this.status === 'on' ? '云端已同步' : this.status === 'err' ? '同步异常' : this.status === 'spin' ? '同步中...' : '本地模式';
+    const hasToken = !!localStorage.getItem('github_token');
+    el.className = 'sync-dot sync-' + (this.status === 'on' ? (hasToken ? 'on' : 'on') : this.status === 'err' ? 'err' : this.status === 'spin' ? 'spin' : 'off');
+    if (txt) {
+      if (this.status === 'spin') { txt.textContent = '同步中...'; }
+      else if (hasToken) { txt.textContent = this.status === 'on' ? '云端已同步' : '同步异常'; }
+      else { txt.textContent = this.status === 'on' ? '云端已同步（只读）' : '本地模式'; }
+    }
   },
 
   // 从 GitHub raw / jsdelivr CDN 读取 data.json（双通道容错）
@@ -127,9 +131,11 @@ const Cloud = {
   },
 };
 
-// 简化：不再需要 COS 配置弹窗
-function saveSyncConfig() {}
-function pushLocalToCloud() { Cloud.saveAll(DB).then(ok => { if (ok) showToast('已同步'); else showToast('同步失败'); }); }
+// 获取/设置 GitHub Token
+function getGithubToken() { return localStorage.getItem('github_token'); }
+function setGithubToken(token) { if (token) localStorage.setItem('github_token', token); else localStorage.removeItem('github_token'); }
+
+function pushLocalToCloud() { Cloud.saveAll(DB).then(ok => { if (ok) showToast('已同步'); else showToast('同步失败，请先配置 GitHub Token'); }); }
 
 // =====================================================
 // 数据持久化（本地 + GitHub data.json 同步）
@@ -144,13 +150,14 @@ function syncToCloud() { Cloud.scheduleSave(DB); }
 function removeFromCloud() { Cloud.scheduleSave(DB); }
 
 async function pushLocalToCloud() {
-  if (!Cloud.enabled) { showToast('请先配置腾讯云 COS'); return; }
+  const token = getGithubToken();
+  if (!token) { showToast('请先配置 GitHub Token'); openSyncModal(); return; }
   showToast('正在推送本地数据到云端...');
   const ok = await Cloud.saveAll(DB);
   if (ok) {
     showToast('本地数据已同步到云端，其他设备可以访问了');
   } else {
-    showToast('推送失败，请检查配置');
+    showToast('推送失败，请检查 Token 权限');
   }
 }
 
@@ -1787,44 +1794,42 @@ async function submitRecord(event) {
 }
 
 // =====================================================
-// 云同步配置面板
+// 云同步配置面板（GitHub Token）
 // =====================================================
 function openSyncModal() {
-  const cfg = Cloud.getConfig();
+  const hasToken = !!getGithubToken();
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">
       <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置 · 腾讯云 COS
+        <i data-lucide="cloud" class="w-5 h-5 text-indigo-500"></i>云同步配置 · GitHub Token
       </h3>
-      <p class="text-sm text-gray-500 mb-4">数据写入 COS 的 <code class="bg-gray-100 px-1 rounded">data.json</code>，所有设备打开网页即可同步。需要<strong>腾讯云 COS Bucket</strong>，并在<strong>密钥管理</strong>中获取 SecretId 和 SecretKey。</p>
+      <p class="text-sm text-gray-500 mb-4">配置 GitHub Token 后，所有设备打开网页即可<strong>自动读写云端数据</strong>。数据存储在 <code class="bg-gray-100 px-1 rounded">Taglo24/shangtuo-crm</code> 的 <code class="bg-gray-100 px-1 rounded">data.json</code>。</p>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+        <p class="text-sm text-amber-800 font-semibold mb-2">创建 Token 步骤（30秒）：</p>
+        <ol class="text-sm text-amber-700 space-y-1 list-decimal list-inside">
+          <li>打开 <a href="https://github.com/settings/tokens/new" target="_blank" class="text-indigo-600 underline font-semibold">github.com/settings/tokens/new</a></li>
+          <li>Note 填 <code class="bg-amber-100 px-1 rounded">商拓通云同步</code>，Expiration 选 <strong>No expiration</strong></li>
+          <li>勾选 <code class="bg-amber-100 px-1 rounded">public_repo</code>（仅此一项即可）</li>
+          <li>点 <strong>Generate token</strong>，复制生成的 Token</li>
+          <li>粘贴到下方，保存</li>
+        </ol>
+      </div>
+
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">SecretId</label>
-          <input type="text" id="syncSecretId" value="${cfg.secretId || ''}" placeholder="AKID..." class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">SecretKey</label>
-          <input type="password" id="syncSecretKey" value="${cfg.secretKey || ''}" placeholder="•••••" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" autocomplete="off">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Bucket</label>
-            <input type="text" id="syncBucket" value="${cfg.bucket || ''}" placeholder="my-bucket-1234567890" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Region</label>
-            <input type="text" id="syncRegion" value="${cfg.region || ''}" placeholder="ap-shanghai" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm">
-          </div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">GitHub Personal Access Token</label>
+          <input type="password" id="syncToken" value="${hasToken ? getGithubToken() : ''}" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-mono" autocomplete="off">
+          ${hasToken ? '<p class="text-xs text-green-600 mt-1">已配置 Token，数据将自动同步</p>' : '<p class="text-xs text-gray-400 mt-1">粘贴后点击保存即可启用云端读写</p>'}
         </div>
         <div class="flex items-center gap-2 text-sm">
           <span class="sync-dot sync-${Cloud.status === 'on' ? 'on' : Cloud.status === 'err' ? 'err' : 'off'}"></span>
-          <span class="text-gray-600">当前状态：${Cloud.status === 'on' ? '已连接云端' : Cloud.status === 'err' ? '连接异常' : '本地模式'}</span>
+          <span class="text-gray-600">当前状态：${hasToken ? '已连接云端（可读写）' : '云端只读，配置 Token 后可写入'}</span>
         </div>
       </div>
       <div class="flex gap-3 mt-6">
-        <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存并连接</button>
-        ${Cloud.enabled ? '<button onclick="closeModal();pushLocalToCloud()" class="px-4 py-2.5 bg-green-50 text-green-600 rounded-lg text-sm font-semibold hover:bg-green-100">推送本地数据</button>' : ''}
-        ${Cloud.enabled ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">断开</button>' : ''}
+        <button onclick="saveSyncConfig()" class="flex-1 px-4 py-2.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600">保存 Token</button>
+        ${hasToken ? '<button onclick="clearSyncConfig()" class="px-4 py-2.5 bg-red-50 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-100">移除 Token</button>' : ''}
         <button onclick="closeModal()" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
       </div>
     </div>`;
@@ -1833,44 +1838,27 @@ function openSyncModal() {
   if (lucide) lucide.createIcons();
 }
 
-async function saveSyncConfig() {
-  const secretId = document.getElementById('syncSecretId').value.trim();
-  const secretKey = document.getElementById('syncSecretKey').value.trim();
-  const bucket = document.getElementById('syncBucket').value.trim();
-  const region = document.getElementById('syncRegion').value.trim();
-  if (!secretId || !secretKey || !bucket || !region) { showToast('请填写完整配置'); return; }
-  Cloud.setConfig(secretId, secretKey, bucket, region);
-  closeModal();
-  showToast('配置已保存，正在连接云端...');
-  const ok = await loadFromCloud();
-  if (ok) {
-    renderAll();
-    showToast('云端数据已加载');
-  } else if (Cloud.enabled) {
-    const hasRealData = DB.orgs.some(o => !o.id.startsWith('org'))
-      || DB.myUsers.some(u => !u.id.startsWith('my'))
-      || DB.clientPersons.some(p => !p.id.startsWith('cp'))
-      || DB.records.length > 0;
-    if (hasRealData) {
-      showToast('正在推送本地数据到云端...');
-      const ok2 = await Cloud.saveAll(DB);
-      if (ok2) {
-        showToast('本地数据已同步到 COS，其他设备可以访问了');
-      } else {
-        showToast('推送失败，请检查 CORS 设置');
-      }
-    } else {
-      showToast('连接成功，COS 暂无数据');
-    }
-  } else {
-    showToast('连接失败，请检查配置');
+function saveSyncConfig() {
+  const token = document.getElementById('syncToken').value.trim();
+  if (!token) { showToast('请输入 GitHub Token'); return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    showToast('Token 格式不正确，应以 ghp_ 或 github_pat_ 开头'); return;
   }
+  setGithubToken(token);
+  Cloud.updateIndicator();
+  closeModal();
+  showToast('Token 已保存，数据将自动同步到云端');
+  // 立即推送一次本地数据
+  Cloud.saveAll(DB).then(ok => {
+    if (!ok) showToast('推送失败，请检查 Token 权限是否包含 public_repo');
+  });
 }
 
-async function clearSyncConfig() {
-  Cloud.clearConfig();
+function clearSyncConfig() {
+  setGithubToken(null);
+  Cloud.updateIndicator();
   closeModal();
-  showToast('已断开云同步，切换为本地模式');
+  showToast('Token 已移除，恢复只读模式');
 }
 
 // =====================================================
