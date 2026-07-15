@@ -218,8 +218,8 @@ function updateUserBar() {
       <div class="w-7 h-7 rounded-full ${isAdmin ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'} flex items-center justify-center text-xs font-bold">${currentUser.displayName[0] || 'U'}</div>
       <span class="text-sm text-gray-600 font-medium">${currentUser.displayName}</span>
       <span class="text-xs px-1.5 py-0.5 rounded ${isAdmin ? 'bg-indigo-50 text-indigo-500' : 'bg-green-50 text-green-500'}">${isAdmin ? '管理员' : '操作员'}</span>
-      ${isAdmin ? '<button onclick="openUserManager()" class="text-xs text-gray-400 hover:text-indigo-500 flex items-center gap-1 ml-1" title="用户管理"><i data-lucide="users-cog" class="w-3.5 h-3.5"></i></button>' : ''}
-      <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 ml-1" title="退出登录"><i data-lucide="log-out" class="w-3.5 h-3.5"></i></button>
+      ${isAdmin ? '<button onclick="openUserManager()" class="text-xs bg-indigo-500 text-white hover:bg-indigo-600 px-2.5 py-1 rounded-md font-medium transition-colors" title="用户管理"><i data-lucide="users" class="w-3.5 h-3.5 mr-1"></i>用户管理</button>' : ''}
+      <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 ml-1" title="退出登录"><i data-lucide="log-out" class="w-4 h-4"></i></button>
     </div>`;
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
