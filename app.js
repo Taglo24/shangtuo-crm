@@ -45,6 +45,7 @@ const Cloud = {
       this.client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       this.enabled = true;
       this.status = 'on';
+      console.log('[Cloud] Supabase 客户端就绪');
       this._subscribeRealtime();
     } catch(e) {
       console.error('Supabase init failed:', e);
@@ -274,19 +275,27 @@ async function addOperator() {
   const displayName = document.getElementById('newDisplayName').value.trim();
   const password = document.getElementById('newPassword').value.trim();
   if (!username || !password) { showToast('请填写用户名和密码'); return; }
+  if (password.length < 4) { showToast('密码至少4位'); return; }
 
-  const hash = await hashPassword(password);
-  const { error } = await Cloud.client.from('app_users').insert({
-    id: uid(), username, password_hash: hash, role: 'operator',
-    display_name: displayName || username, status: 'active', created_at: Date.now()
-  });
-  if (error) {
-    if (error.code === '23505') showToast('用户名已存在');
-    else showToast('添加失败: ' + error.message);
-    return;
+  try {
+    const hash = await hashPassword(password);
+    if (!Cloud.client) { showToast('云端连接未就绪，请刷新重试'); return; }
+    const { error } = await Cloud.client.from('app_users').insert({
+      id: uid(), username, password_hash: hash, role: 'operator',
+      display_name: displayName || username, status: 'active', created_at: Date.now()
+    });
+    if (error) {
+      if (error.code === '23505') showToast('用户名已存在');
+      else showToast('添加失败: ' + (error.message || '未知错误'));
+      console.error('addOperator error:', error);
+      return;
+    }
+    showToast('操作员添加成功');
+    openUserManager();
+  } catch(e) {
+    console.error('addOperator exception:', e);
+    showToast('添加失败: ' + (e.message || '未知错误'));
   }
-  showToast('操作员添加成功');
-  openUserManager();
 }
 
 async function deleteUser(userId) {
