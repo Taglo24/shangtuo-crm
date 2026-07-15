@@ -461,6 +461,7 @@ function getOrg(id) { return DB.orgs.find(o => o.id === id); }
 function getClientPerson(id) { return DB.clientPersons.find(p => p.id === id); }
 function getMyUser(id) { return DB.myUsers.find(u => u.id === id); }
 function getChildren(parentId) { return DB.clientPersons.filter(p => p.parentId === parentId && p.status !== 'archived'); }
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function getRootPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && !p.parentId && p.status !== 'archived'); }
 function getActivePersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived'); }
 function getArchivedPersons(orgId) { return DB.clientPersons.filter(p => p.orgId === orgId && p.status === 'archived'); }
@@ -782,7 +783,8 @@ function renderMyUserCard(u, isArchived = false) {
           <span class="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">${records}条记录</span>
           ${isArchived
             ? `<button onclick="event.stopPropagation(); restoreMyUser('${u.id}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-500 rounded-lg text-xs hover:bg-blue-100 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>恢复</button>`
-            : `<button onclick="event.stopPropagation(); deleteMyUser('${u.id}')" class="px-2.5 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i>删除</button>`
+            : `<button onclick="event.stopPropagation(); openEditMyUserModal('${u.id}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-500 rounded-lg text-xs hover:bg-blue-100 flex items-center gap-1"><i data-lucide="pencil" class="w-3 h-3"></i>编辑</button>
+               <button onclick="event.stopPropagation(); deleteMyUser('${u.id}')" class="px-2.5 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i>删除</button>`
           }
         </div>
       </div>
@@ -851,6 +853,47 @@ function saveMyUser() {
   closeModal();
   setTimeout(() => openMyUsersModal(), 100);
   showToast('已新增我方人员');
+}
+
+// 编辑我方人员
+function openEditMyUserModal(userId) {
+  const u = getMyUser(userId);
+  if (!u) { showToast('人员不存在'); return; }
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6 max-h-[80vh] overflow-y-auto">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="user-cog" class="w-5 h-5 text-blue-500"></i>编辑我方人员</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">姓名 <span class="text-red-500">*</span></label>
+          <input id="editMyUserName" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" placeholder="请输入姓名" maxlength="20" value="${escapeHtml(u.name)}"></div>
+        <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">职位 <span class="text-red-500">*</span></label>
+          <input id="editMyUserPosition" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm" placeholder="如：销售总监、客户经理" maxlength="30" value="${escapeHtml(u.position || '')}"></div>
+        <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+          <p class="mb-1">📌 关联信息（不可编辑）：</p>
+          <p>• 服务合作机构：${DB.clientPersons.filter(p => p.myContactId === u.id).length} 个</p>
+          <p>• 沟通记录：${DB.records.filter(r => r.myUserId === u.id).length} 条</p>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-5">
+        <button onclick="openMyUsersModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+        <button onclick="updateMyUser('${u.id}')" class="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600">保存修改</button>
+      </div>
+    </div>`;
+  if (lucide) lucide.createIcons();
+}
+
+function updateMyUser(userId) {
+  const u = getMyUser(userId);
+  if (!u) { showToast('人员不存在'); return; }
+  const name = document.getElementById('editMyUserName').value.trim();
+  const position = document.getElementById('editMyUserPosition').value.trim();
+  if (!name) { showToast('请输入姓名'); return; }
+  if (!position) { showToast('请输入职位'); return; }
+  u.name = name;
+  u.position = position;
+  saveLocal();
+  syncToCloud('my_users', u);
+  openMyUsersModal();
+  showToast('修改已保存');
 }
 
 // 删除我方人员 - 弹出选择框：归档 或 直接删除
