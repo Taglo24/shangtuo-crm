@@ -532,24 +532,57 @@ function reorderOrgs(dragId, dropId) {
 
   saveLocal();
   renderDashboard();
-  // 同步刷新机构人员树（机构与人员视图 id 是 view-people）
-  const orgView = document.getElementById('view-people');
-  if (orgView && !orgView.classList.contains('hidden')) renderOrgTree();
+  // 始终刷新机构人员树（无副作用，隐藏时写入 innerHTML 不影响性能）
+  renderOrgTree();
   showToast('机构顺序已更新');
 }
 
-// 机构树专用的拖拽处理（不与人员拖拽冲突）
+// 统一拖拽分派器：根据 dragState 自动路由到机构排序或人员移动
+function treeDragOver(ev, orgId) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (draggedTreeOrgId) {
+    // 机构拖拽 → 显示插入指示线
+    ev.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
+    const indicator = document.querySelector('.tree-drop-indicator[data-for-org="' + orgId + '"]');
+    if (indicator) indicator.classList.add('show');
+  } else if (dragState && dragState.personId) {
+    // 人员拖拽 → 复用原有逻辑
+    dragOverNode(ev, 'org', orgId);
+  }
+}
+function treeDragLeave(ev, orgId) {
+  if (draggedTreeOrgId) {
+    const indicator = document.querySelector('.tree-drop-indicator[data-for-org="' + orgId + '"]');
+    if (indicator) indicator.classList.remove('show');
+  } else {
+    dragLeaveNode(ev);
+  }
+}
+function treeDrop(ev, orgId) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (draggedTreeOrgId) {
+    // 机构拖拽 → 执行排序
+    document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
+    if (draggedTreeOrgId !== orgId) reorderOrgs(draggedTreeOrgId, orgId);
+    draggedTreeOrgId = null;
+  } else if (dragState && dragState.personId) {
+    // 人员拖拽 → 复用原有逻辑
+    dropOnNode(ev, 'org', orgId);
+  }
+}
+
+// 机构行拖拽开始/结束（仅用于机构拖拽）
 let draggedTreeOrgId = null;
 function dragStartOrgTree(ev, orgId) {
-  // 阻止人员拖拽事件冒泡到这里
   ev.stopPropagation();
-  // 仅在没有任何拖拽进行中时启用
   if (dragState && dragState.personId) { ev.preventDefault(); return; }
   draggedTreeOrgId = orgId;
   ev.dataTransfer.effectAllowed = 'move';
   ev.dataTransfer.setData('text/plain', 'org:' + orgId);
   ev.currentTarget.classList.add('opacity-50');
-  // 自定义拖拽幽灵
   const org = DB.orgs.find(o => o.id === orgId);
   if (org) {
     const ghost = document.createElement('div');
@@ -563,36 +596,6 @@ function dragStartOrgTree(ev, orgId) {
 function dragEndOrgTree(ev) {
   ev.currentTarget.classList.remove('opacity-50');
   document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
-  draggedTreeOrgId = null;
-}
-function dragOverOrgTree(ev, orgId) {
-  // 如果是人员拖拽，不响应
-  if (dragState && dragState.personId) return;
-  if (!draggedTreeOrgId) return;
-  // 阻止冒泡到 person drop handler
-  ev.stopPropagation();
-  ev.preventDefault();
-  ev.dataTransfer.dropEffect = 'move';
-  // 显示该机构行下方的放置指示线
-  document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
-  const indicator = document.querySelector('.tree-drop-indicator[data-for-org="' + orgId + '"]');
-  if (indicator) indicator.classList.add('show');
-}
-function dragLeaveOrgTree(ev) {
-  const target = ev.currentTarget;
-  const indicator = target.parentElement && target.parentElement.querySelector('.tree-drop-indicator');
-  if (indicator && (!ev.relatedTarget || !target.contains(ev.relatedTarget))) {
-    indicator.classList.remove('show');
-  }
-}
-function dropOrgTree(ev, dropOrgId) {
-  if (!draggedTreeOrgId) return;
-  ev.stopPropagation();
-  ev.preventDefault();
-  document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
-  if (draggedTreeOrgId !== dropOrgId) {
-    reorderOrgs(draggedTreeOrgId, dropOrgId);
-  }
   draggedTreeOrgId = null;
 }
 
@@ -1092,12 +1095,9 @@ function renderOrgTree() {
              draggable="true"
              ondragstart="dragStartOrgTree(event, '${org.id}')"
              ondragend="dragEndOrgTree(event)"
-             ondragover="dragOverOrgTree(event, '${org.id}')"
-             ondragleave="dragLeaveOrgTree(event)"
-             ondrop="dropOrgTree(event, '${org.id}')"
-             ondragover="dragOverNode(event, 'org', '${org.id}')"
-             ondragleave="dragLeaveNode(event)"
-             ondrop="dropOnNode(event, 'org', '${org.id}')"
+             ondragover="treeDragOver(event, '${org.id}')"
+             ondragleave="treeDragLeave(event, '${org.id}')"
+             ondrop="treeDrop(event, '${org.id}')"
              onclick="selectNode('org','${org.id}')">
           <i data-lucide="grip-vertical" class="w-4 h-4 text-gray-300 flex-shrink-0 cursor-grab" title="拖动排序"></i>
           <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); toggleOrgCollapse('${org.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>
