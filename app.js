@@ -218,7 +218,7 @@ function updateUserBar() {
       <div class="w-7 h-7 rounded-full ${isAdmin ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'} flex items-center justify-center text-xs font-bold">${currentUser.displayName[0] || 'U'}</div>
       <span class="text-sm text-gray-600 font-medium">${currentUser.displayName}</span>
       <span class="text-xs px-1.5 py-0.5 rounded ${isAdmin ? 'bg-indigo-50 text-indigo-500' : 'bg-green-50 text-green-500'}">${isAdmin ? '管理员' : '操作员'}</span>
-      ${isAdmin ? '<button onclick="openUserManager()" style="background:#6366f1;color:#fff;border:none;font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:500;" title="用户管理"><i data-lucide="users" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"></i>用户管理</button>' : ''}
+      ${isAdmin ? '<button onclick="openUserManager()" style="background:#6366f1;color:#fff;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;" title="用户管理"><i data-lucide="settings" style="width:18px;height:18px;"></i></button>' : ''}
       <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 ml-1" title="退出登录"><i data-lucide="log-out" class="w-4 h-4"></i></button>
     </div>`;
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -619,7 +619,7 @@ function renderDashboard() {
 
   renderDashboardCalendar();
 
-  // 右侧：甲方机构列表（支持拖拽排序）
+  // 右侧：合作机构列表（支持拖拽排序）
   const orgsContainer = document.getElementById('dashboardOrgs');
   if (orgsContainer) {
     const sortedOrgs = sortOrgs();
@@ -662,7 +662,7 @@ function renderDashboard() {
 // 跳转到机构人员页
 function goToPeople() { selectedTreeNode = null; switchView('people'); }
 
-// 我方人员弹窗 - 展示我方人员及其服务的甲方机构
+// 我方人员弹窗 - 展示我方人员及其服务的合作机构
 function openMyUsersModal() {
   const activeUsers = getActiveMyUsers();
   const archivedUsers = getArchivedMyUsers();
@@ -724,7 +724,7 @@ function renderMyUserCard(u, isArchived = false) {
       </div>
       ${orgs.length ? `
         <div class="space-y-2">
-          <p class="text-xs text-gray-500 font-semibold flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>服务的甲方机构：</p>
+          <p class="text-xs text-gray-500 font-semibold flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>服务的合作机构：</p>
           <div class="flex flex-wrap gap-2">
             ${orgs.map(oid => {
               const o = getOrg(oid);
@@ -1794,7 +1794,7 @@ function renderRecordPage() {
   myUserSelect.innerHTML = '<option value="">请选择...</option>' + getActiveMyUsers().map(u => `<option value="${u.id}">${u.name}（${u.position}）</option>`).join('');
 
   selectedClientPersons.clear();
-  // 填充甲方机构下拉
+  // 填充合作机构下拉
   const orgSelect = document.getElementById('recClientOrg');
   orgSelect.innerHTML = '<option value="">请选择机构...</option>' + sortOrgs().map(o => `<option value="${o.id}">${o.name}</option>`).join('');
   // 隐藏人员区域
@@ -1872,7 +1872,7 @@ async function saveOrgFromRecord() {
 // 从录入页面新增甲方人员
 function openAddPersonFromRecord() {
   const orgId = document.getElementById('recClientOrg').value;
-  if (!orgId) { showToast('请先选择甲方机构'); return; }
+  if (!orgId) { showToast('请先选择合作机构'); return; }
   const org = getOrg(orgId);
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">

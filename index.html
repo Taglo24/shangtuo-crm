@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=8.0.4">
+  <link rel="stylesheet" href="style.css?v=8.0.5">
 </head>
 <body class="bg-gray-50 min-h-screen">
 
@@ -33,7 +33,6 @@
         <p id="loginError" class="text-sm text-red-500 hidden">用户名或密码错误</p>
         <button onclick="handleLogin()" class="w-full bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-indigo-700 transition-colors">登录</button>
       </div>
-      <p class="text-xs text-gray-300 text-center mt-4">初始管理员 admin / admin123</p>
     </div>
   </div>
 
@@ -102,7 +101,7 @@
           <div id="dashboardCalendar" class="max-h-[520px] overflow-y-auto"></div>
         </div>
         <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-5"><i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>甲方机构</h3>
+          <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-5"><i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>合作机构</h3>
           <div id="dashboardOrgs" class="space-y-3 max-h-[520px] overflow-y-auto"></div>
         </div>
       </div>
@@ -183,7 +182,7 @@
             <select id="recMyUser" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择...</option></select></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">对接甲方人员 <span class="text-red-500">*</span></label>
             <div class="mb-3">
-              <label class="block text-xs text-gray-400 mb-1.5">第一步：选择甲方机构</label>
+              <label class="block text-xs text-gray-400 mb-1.5">第一步：选择合作机构</label>
               <div class="flex gap-2">
                 <select id="recClientOrg" onchange="renderRecClientPersons()" class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择机构...</option></select>
                 <button type="button" onclick="openAddOrgFromRecord()" class="px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增机构</button>
@@ -232,6 +231,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=8.0.4"></script>
+  <script src="app.js?v=8.0.5"></script>
 </body>
 </html>
