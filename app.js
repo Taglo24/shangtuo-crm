@@ -532,8 +532,8 @@ function reorderOrgs(dragId, dropId) {
 
   saveLocal();
   renderDashboard();
-  // 同步刷新机构人员树（如当前正在该视图）
-  const orgView = document.getElementById('view-orgs');
+  // 同步刷新机构人员树（机构与人员视图 id 是 view-people）
+  const orgView = document.getElementById('view-people');
   if (orgView && !orgView.classList.contains('hidden')) renderOrgTree();
   showToast('机构顺序已更新');
 }
