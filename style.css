@@ -271,3 +271,23 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* 机构树拖拽放置指示线 */
+.tree-drop-indicator {
+  height: 0;
+  background: #6366f1;
+  border-radius: 2px;
+  margin: 0 8px;
+  transition: height 0.15s, margin 0.15s;
+}
+.tree-drop-indicator.show {
+  height: 3px;
+  margin: 4px 8px;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+}
+.tree-node[draggable="true"]:hover {
+  cursor: grab;
+}
+.tree-node[draggable="true"]:active {
+  cursor: grabbing;
+}

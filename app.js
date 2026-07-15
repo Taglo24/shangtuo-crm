@@ -532,7 +532,68 @@ function reorderOrgs(dragId, dropId) {
 
   saveLocal();
   renderDashboard();
+  // 同步刷新机构人员树（如当前正在该视图）
+  const orgView = document.getElementById('view-orgs');
+  if (orgView && !orgView.classList.contains('hidden')) renderOrgTree();
   showToast('机构顺序已更新');
+}
+
+// 机构树专用的拖拽处理（不与人员拖拽冲突）
+let draggedTreeOrgId = null;
+function dragStartOrgTree(ev, orgId) {
+  // 阻止人员拖拽事件冒泡到这里
+  ev.stopPropagation();
+  // 仅在没有任何拖拽进行中时启用
+  if (dragState && dragState.personId) { ev.preventDefault(); return; }
+  draggedTreeOrgId = orgId;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', 'org:' + orgId);
+  ev.currentTarget.classList.add('opacity-50');
+  // 自定义拖拽幽灵
+  const org = DB.orgs.find(o => o.id === orgId);
+  if (org) {
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.textContent = '🏢 ' + org.name;
+    document.body.appendChild(ghost);
+    ev.dataTransfer.setDragImage(ghost, 10, 10);
+    setTimeout(() => ghost.remove(), 0);
+  }
+}
+function dragEndOrgTree(ev) {
+  ev.currentTarget.classList.remove('opacity-50');
+  document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
+  draggedTreeOrgId = null;
+}
+function dragOverOrgTree(ev, orgId) {
+  // 如果是人员拖拽，不响应
+  if (dragState && dragState.personId) return;
+  if (!draggedTreeOrgId) return;
+  // 阻止冒泡到 person drop handler
+  ev.stopPropagation();
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  // 显示该机构行下方的放置指示线
+  document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
+  const indicator = document.querySelector('.tree-drop-indicator[data-for-org="' + orgId + '"]');
+  if (indicator) indicator.classList.add('show');
+}
+function dragLeaveOrgTree(ev) {
+  const target = ev.currentTarget;
+  const indicator = target.parentElement && target.parentElement.querySelector('.tree-drop-indicator');
+  if (indicator && (!ev.relatedTarget || !target.contains(ev.relatedTarget))) {
+    indicator.classList.remove('show');
+  }
+}
+function dropOrgTree(ev, dropOrgId) {
+  if (!draggedTreeOrgId) return;
+  ev.stopPropagation();
+  ev.preventDefault();
+  document.querySelectorAll('.tree-drop-indicator.show').forEach(el => el.classList.remove('show'));
+  if (draggedTreeOrgId !== dropOrgId) {
+    reorderOrgs(draggedTreeOrgId, dropOrgId);
+  }
+  draggedTreeOrgId = null;
 }
 
 function getDateOffset(days) {
@@ -1026,17 +1087,25 @@ function renderOrgTree() {
     const isSelected = selectedTreeNode && selectedTreeNode.type === 'org' && selectedTreeNode.id === org.id;
     const collapsed = isCollapsed(org.id);
     return `
-      <div class="tree-node">
+      <div class="tree-node" data-org-id="${org.id}">
         <div class="tree-row ${isSelected ? 'selected' : ''} p-2 flex items-center gap-2"
+             draggable="true"
+             ondragstart="dragStartOrgTree(event, '${org.id}')"
+             ondragend="dragEndOrgTree(event)"
+             ondragover="dragOverOrgTree(event, '${org.id}')"
+             ondragleave="dragLeaveOrgTree(event)"
+             ondrop="dropOrgTree(event, '${org.id}')"
              ondragover="dragOverNode(event, 'org', '${org.id}')"
              ondragleave="dragLeaveNode(event)"
              ondrop="dropOnNode(event, 'org', '${org.id}')"
              onclick="selectNode('org','${org.id}')">
+          <i data-lucide="grip-vertical" class="w-4 h-4 text-gray-300 flex-shrink-0 cursor-grab" title="拖动排序"></i>
           <i data-lucide="${collapsed ? 'chevron-right' : 'chevron-down'}" class="w-4 h-4 text-gray-400 flex-shrink-0 cursor-pointer" onclick="event.stopPropagation(); toggleOrgCollapse('${org.id}'); renderOrgTree(); if(lucide)lucide.createIcons();"></i>
           <i data-lucide="building-2" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
           <span class="text-sm font-semibold text-gray-700">${org.name}</span>
           <span class="text-xs text-gray-400 ml-auto">${activePersons.length}人${archivedPersons.length ? ' · ' + archivedPersons.length + '归档' : ''}</span>
         </div>
+        <div class="tree-drop-indicator" data-for-org="${org.id}"></div>
         ${!collapsed ? `<div class="tree-children">
           ${renderPersonTree(org.id, null)}
           ${renderArchivedSection(org.id)}
