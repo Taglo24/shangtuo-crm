@@ -1,6 +1,6 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
-// v7.0.0 - Supabase 实时数据库，全设备自动同步
+// v8.0.0 - 用户认证体系 + Supabase 实时数据库
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -148,6 +148,163 @@ const Cloud = {
     }, 800);
   }
 };
+
+// =====================================================
+// 用户认证体系（管理员 / 操作员）
+// =====================================================
+const SESSION_KEY = 'shangtuo_session';
+let currentUser = null; // { id, username, role, displayName }
+
+// SHA-256 密码哈希（Web Crypto API）
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 检查登录状态
+function checkSession() {
+  const saved = localStorage.getItem(SESSION_KEY);
+  if (saved) {
+    try { currentUser = JSON.parse(saved); return true; } catch { return false; }
+  }
+  return false;
+}
+
+// 登录
+async function handleLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!username || !password) { document.getElementById('loginError').classList.remove('hidden'); return; }
+
+  const hash = await hashPassword(password);
+  const { data, error } = await Cloud.client.from('app_users')
+    .select('*').eq('username', username).eq('password_hash', hash).eq('status', 'active').single();
+
+  if (data) {
+    currentUser = { id: data.id, username: data.username, role: data.role, displayName: data.display_name || data.username };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('loginError').classList.add('hidden');
+    document.getElementById('loginPassword').value = '';
+    await loadData();
+    renderAll();
+    updateUserBar();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } else {
+    document.getElementById('loginError').classList.remove('hidden');
+  }
+}
+
+// 退出登录
+function handleLogout() {
+  currentUser = null;
+  localStorage.removeItem(SESSION_KEY);
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// 更新顶部用户栏
+function updateUserBar() {
+  if (!currentUser) return;
+  const bar = document.getElementById('userBar');
+  if (!bar) return;
+  const isAdmin = currentUser.role === 'admin';
+  bar.innerHTML = `
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-full ${isAdmin ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'} flex items-center justify-center text-xs font-bold">${currentUser.displayName[0] || 'U'}</div>
+      <span class="text-sm text-gray-600 font-medium">${currentUser.displayName}</span>
+      <span class="text-xs px-1.5 py-0.5 rounded ${isAdmin ? 'bg-indigo-50 text-indigo-500' : 'bg-green-50 text-green-500'}">${isAdmin ? '管理员' : '操作员'}</span>
+      ${isAdmin ? '<button onclick="openUserManager()" class="text-xs text-gray-400 hover:text-indigo-500 flex items-center gap-1 ml-1" title="用户管理"><i data-lucide="users-cog" class="w-3.5 h-3.5"></i></button>' : ''}
+      <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 ml-1" title="退出登录"><i data-lucide="log-out" class="w-3.5 h-3.5"></i></button>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// =====================================================
+// 管理员 · 用户管理面板
+// =====================================================
+async function openUserManager() {
+  const { data: users } = await Cloud.client.from('app_users').select('*').order('created_at');
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+        <i data-lucide="users-cog" class="w-5 h-5 text-indigo-500"></i>用户管理
+      </h3>
+      <div class="space-y-2 mb-6">
+        ${(users || []).map(u => `
+          <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg ${u.id === currentUser.id ? 'bg-indigo-50' : ''}">
+            <div class="w-9 h-9 rounded-full ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'} flex items-center justify-center font-bold text-sm">${(u.display_name || u.username)[0]}</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-gray-800 text-sm">${u.display_name || u.username}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-500' : 'bg-green-50 text-green-500'}">${u.role === 'admin' ? '管理员' : '操作员'}</span>
+                ${u.status === 'inactive' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">已停用</span>' : ''}
+              </div>
+              <p class="text-xs text-gray-400">@${u.username}</p>
+            </div>
+            ${u.id !== currentUser.id ? `
+              <button onclick="resetUserPassword('${u.id}')" class="text-xs text-blue-500 hover:text-blue-700 px-2 py-1">重置密码</button>
+              ${u.role !== 'admin' ? `<button onclick="deleteUser('${u.id}')" class="text-xs text-red-500 hover:text-red-700 px-2 py-1">删除</button>` : ''}
+            ` : '<span class="text-xs text-gray-300">当前账号</span>'}
+          </div>`).join('')}
+      </div>
+      <div class="border-t pt-4">
+        <h4 class="font-semibold text-gray-700 text-sm mb-3">添加操作员</h4>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <input type="text" id="newUsername" placeholder="登录用户名" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="text" id="newDisplayName" placeholder="显示名称" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          </div>
+          <input type="password" id="newPassword" placeholder="登录密码" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <button onclick="addOperator()" class="w-full bg-indigo-500 text-white rounded-lg py-2 text-sm font-semibold hover:bg-indigo-600">添加操作员</button>
+        </div>
+      </div>
+      <button onclick="closeModal()" class="w-full mt-4 bg-gray-100 text-gray-600 rounded-lg py-2 text-sm font-semibold hover:bg-gray-200">关闭</button>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function addOperator() {
+  const username = document.getElementById('newUsername').value.trim();
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  const password = document.getElementById('newPassword').value.trim();
+  if (!username || !password) { showToast('请填写用户名和密码'); return; }
+
+  const hash = await hashPassword(password);
+  const { error } = await Cloud.client.from('app_users').insert({
+    id: uid(), username, password_hash: hash, role: 'operator',
+    display_name: displayName || username, status: 'active', created_at: Date.now()
+  });
+  if (error) {
+    if (error.code === '23505') showToast('用户名已存在');
+    else showToast('添加失败: ' + error.message);
+    return;
+  }
+  showToast('操作员添加成功');
+  openUserManager();
+}
+
+async function deleteUser(userId) {
+  if (!confirm('确定删除该操作员？')) return;
+  const { error } = await Cloud.client.from('app_users').delete().eq('id', userId);
+  if (error) { showToast('删除失败'); return; }
+  showToast('已删除');
+  openUserManager();
+}
+
+async function resetUserPassword(userId) {
+  const newPwd = prompt('请输入新密码：');
+  if (!newPwd) return;
+  const hash = await hashPassword(newPwd);
+  const { error } = await Cloud.client.from('app_users').update({ password_hash: hash }).eq('id', userId);
+  if (error) { showToast('重置失败'); return; }
+  showToast('密码已重置');
+}
 
 // =====================================================
 // 数据持久化（localStorage 缓存 + Supabase 实时数据库）
@@ -1848,9 +2005,21 @@ async function init() {
   // 模态框遮罩点击关闭
   document.getElementById('modal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 
-  // 加载数据
-  await loadData();
-  renderAll();
+  // 登录回车键支持
+  document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+  document.getElementById('loginUsername').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
+
+  // 先初始化 Supabase 连接
+  Cloud.init();
+
+  // 检查登录状态
+  if (checkSession()) {
+    document.getElementById('loginOverlay').classList.add('hidden');
+    await loadData();
+    renderAll();
+    updateUserBar();
+  }
+  // 未登录则显示登录页（默认可见）
   if (lucide) lucide.createIcons();
 }
 

@@ -7,9 +7,35 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=7.0.0">
+  <link rel="stylesheet" href="style.css?v=8.0.0">
 </head>
 <body class="bg-gray-50 min-h-screen">
+
+  <!-- ============ 登录页 ============ -->
+  <div id="loginOverlay" class="fixed inset-0 z-50 bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <i data-lucide="briefcase" class="w-8 h-8 text-white"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-800">商拓通</h1>
+        <p class="text-sm text-gray-400 mt-1">商务协作管理平台</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-600 mb-1">用户名</label>
+          <input type="text" id="loginUsername" placeholder="请输入用户名" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" autocomplete="off">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-600 mb-1">密码</label>
+          <input type="password" id="loginPassword" placeholder="请输入密码" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" autocomplete="off">
+        </div>
+        <p id="loginError" class="text-sm text-red-500 hidden">用户名或密码错误</p>
+        <button onclick="handleLogin()" class="w-full bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-indigo-700 transition-colors">登录</button>
+      </div>
+      <p class="text-xs text-gray-300 text-center mt-4">初始管理员 admin / admin123</p>
+    </div>
+  </div>
 
   <!-- 顶部导航 -->
   <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
@@ -41,6 +67,7 @@
           <span id="syncText" class="text-xs">本地模式</span>
         </button>
         <span class="text-sm text-gray-400" id="currentDate"></span>
+        <div id="userBar" class="flex items-center gap-2"></div>
         <button onclick="resetData()" class="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1" title="重置示例数据">
           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>重置
         </button>
@@ -205,6 +232,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=7.0.0"></script>
+  <script src="app.js?v=8.0.0"></script>
 </body>
 </html>
