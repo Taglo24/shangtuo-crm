@@ -271,19 +271,23 @@ async function openUserManager() {
 }
 
 async function addOperator() {
+  console.log('[addOperator] 被调用');
   const username = document.getElementById('newUsername').value.trim();
   const displayName = document.getElementById('newDisplayName').value.trim();
   const password = document.getElementById('newPassword').value.trim();
+  console.log('[addOperator] username=' + username + ', displayName=' + displayName + ', passwordLength=' + password.length);
   if (!username || !password) { showToast('请填写用户名和密码'); return; }
   if (password.length < 4) { showToast('密码至少4位'); return; }
 
   try {
     const hash = await hashPassword(password);
     if (!Cloud.client) { showToast('云端连接未就绪，请刷新重试'); return; }
-    const { error } = await Cloud.client.from('app_users').insert({
+    console.log('[addOperator] 开始插入用户...');
+    const { data, error } = await Cloud.client.from('app_users').insert({
       id: uid(), username, password_hash: hash, role: 'operator',
       display_name: displayName || username, status: 'active', created_at: Date.now()
-    });
+    }).select();
+    console.log('[addOperator] 插入结果:', { data, error });
     if (error) {
       if (error.code === '23505') showToast('用户名已存在');
       else showToast('添加失败: ' + (error.message || '未知错误'));
@@ -291,6 +295,10 @@ async function addOperator() {
       return;
     }
     showToast('操作员添加成功');
+    // 清空表单
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newDisplayName').value = '';
+    document.getElementById('newPassword').value = '';
     openUserManager();
   } catch(e) {
     console.error('addOperator exception:', e);
@@ -396,7 +404,8 @@ function initSampleData() {
 }
 
 async function loadData() {
-  Cloud.init();
+  // 避免重复初始化（已在 init() 中初始化过）
+  if (!Cloud.client) Cloud.init();
   // 尝试从云端加载
   if (Cloud.enabled) {
     const ok = await loadFromCloud();
