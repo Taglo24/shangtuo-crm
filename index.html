@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=8.2.0">
+  <link rel="stylesheet" href="style.css?v=8.2.1">
 </head>
 <body class="bg-gray-50 min-h-screen">
 
@@ -150,8 +150,11 @@
         <select id="filterType" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
           <option value="">全部类型</option><option value="visit">拜访</option><option value="call">电话</option><option value="email">邮件</option><option value="meeting">会议</option><option value="online">线上</option><option value="other">其他</option>
         </select>
+        <div class="flex items-center gap-1">
+          <input type="date" id="filterDate" onchange="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" title="按日期筛选">
+          <button onclick="clearDateFilter()" class="text-gray-400 hover:text-red-500 px-1" title="清除日期筛选"><i data-lucide="x-circle" class="w-4 h-4"></i></button>
+        </div>
         <input type="text" id="filterKeyword" placeholder="关键词搜索..." oninput="renderTimeline()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40">
-        <input type="hidden" id="filterDate">
         <div class="ml-auto text-sm text-gray-400" id="timelineCount"></div>
       </div>
       <div class="bg-white rounded-xl border border-gray-200 p-6"><div id="timelineList"></div></div>
@@ -230,6 +233,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=8.2.0"></script>
+  <script src="app.js?v=8.2.1"></script>
 </body>
 </html>

@@ -640,13 +640,11 @@ function switchView(viewName) {
   if (viewName === 'dashboard') renderDashboard();
   if (viewName === 'people') renderPeoplePage();
   if (viewName === 'timeline') {
+    // 日期筛选通过筛选栏的日期控件展示，不再改写页面标题
+    document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
     if (pendingDateFilter) {
       document.getElementById('filterDate').value = pendingDateFilter;
-      document.querySelector('#view-timeline .page-title').textContent = '沟通时间线 · ' + formatDateFull(pendingDateFilter);
       pendingDateFilter = null;
-    } else {
-      document.getElementById('filterDate').value = '';
-      document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
     }
     // 清除机构筛选残留（来自仪表盘或日历点击）
     const orgFilter = document.getElementById('filterOrg');
@@ -1884,6 +1882,12 @@ function filterByOrg(orgId) {
   if (tl) tl.value = orgId;
   renderTimeline();
   if (lucide) lucide.createIcons();
+}
+
+function clearDateFilter() {
+  const d = document.getElementById('filterDate');
+  if (d) d.value = '';
+  renderTimeline();
 }
 
 function filterByOrgDash(orgId) {
