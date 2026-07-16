@@ -784,6 +784,7 @@ function renderMyUserCard(u, isArchived = false) {
           ${isArchived
             ? `<button onclick="event.stopPropagation(); restoreMyUser('${u.id}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-500 rounded-lg text-xs hover:bg-blue-100 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>恢复</button>`
             : `<button onclick="event.stopPropagation(); openEditMyUserModal('${u.id}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-500 rounded-lg text-xs hover:bg-blue-100 flex items-center gap-1"><i data-lucide="pencil" class="w-3 h-3"></i>编辑</button>
+               <button onclick="event.stopPropagation(); archiveMyUser('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-600 rounded-lg text-xs hover:bg-amber-100 flex items-center gap-1" title="归档 — 保留记录和关系"><i data-lucide="archive" class="w-3 h-3"></i>归档</button>
                <button onclick="event.stopPropagation(); deleteMyUser('${u.id}')" class="px-2.5 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs hover:bg-red-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i>删除</button>`
           }
         </div>
@@ -896,7 +897,7 @@ function updateMyUser(userId) {
   showToast('修改已保存');
 }
 
-// 删除我方人员 - 弹出选择框：归档 或 直接删除
+// 删除我方人员 - 单步确认，直接物理删除
 function deleteMyUser(userId) {
   const u = getMyUser(userId);
   if (!u) return;
@@ -904,17 +905,14 @@ function deleteMyUser(userId) {
   const clientRefs = DB.clientPersons.filter(p => p.myContactId === userId).length;
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6 max-w-md">
-      <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5 text-red-500"></i>删除我方人员</h3>
-      <p class="text-sm text-gray-600 mb-4">确定要处理「<span class="font-bold text-gray-800">${u.name}</span>（${u.position}）」吗？</p>
-      ${records > 0 || clientRefs > 0 ? `<p class="text-xs text-gray-500 bg-amber-50 rounded-lg p-3 mb-4 border border-amber-200">该人员涉及 <span class="font-bold text-amber-700">${records}</span> 条沟通记录、<span class="font-bold text-amber-700">${clientRefs}</span> 个甲方人员关联。如选择「归档」，这些关联将被完整保留。</p>` : ''}
-      <div class="space-y-3">
-        <button onclick="archiveMyUser('${userId}')" class="w-full px-4 py-3 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-semibold hover:bg-amber-100 flex items-center justify-center gap-2">
-          <i data-lucide="archive" class="w-4 h-4"></i>归档 — 保留记录和关系，放入归档区
+      <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5 text-red-500"></i>确认删除我方人员</h3>
+      <p class="text-sm text-gray-600 mb-3">确定要删除「<span class="font-bold text-gray-800">${escapeHtml(u.name)}</span>（${escapeHtml(u.position || '')}）」吗？<span class="text-red-500 font-semibold">此操作不可恢复。</span></p>
+      ${records > 0 || clientRefs > 0 ? `<p class="text-xs text-gray-500 bg-amber-50 rounded-lg p-3 mb-4 border border-amber-200">该人员涉及 <span class="font-bold text-amber-700">${records}</span> 条沟通记录、<span class="font-bold text-amber-700">${clientRefs}</span> 个甲方人员关联，删除后将自动解除关联。</p>` : '<p class="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 mb-4">该人员暂无任何关联记录。</p>'}
+      <div class="flex gap-3 mt-4">
+        <button onclick="openMyUsersModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+        <button onclick="hardDeleteMyUser('${userId}')" class="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 flex items-center justify-center gap-1">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>确认删除
         </button>
-        <button onclick="hardDeleteMyUser('${userId}')" class="w-full px-4 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold hover:bg-red-100 flex items-center justify-center gap-2">
-          <i data-lucide="trash-2" class="w-4 h-4"></i>直接删除 — 永久移除，清除所有关联
-        </button>
-        <button onclick="openMyUsersModal()" class="w-full px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
       </div>
     </div>`;
   if (lucide) lucide.createIcons();
