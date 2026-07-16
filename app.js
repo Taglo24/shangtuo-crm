@@ -640,15 +640,15 @@ function switchView(viewName) {
   if (viewName === 'dashboard') renderDashboard();
   if (viewName === 'people') renderPeoplePage();
   if (viewName === 'timeline') {
-    // 日期筛选通过筛选栏的日期控件展示，不再改写页面标题
     document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
+    // 清除所有筛选条件（顶部导航栏入口：完全清空）
+    clearTimelineFilters();
     if (pendingDateFilter) {
+      // 日历入口：仅保留日期筛选
       document.getElementById('filterDate').value = pendingDateFilter;
       pendingDateFilter = null;
     }
-    // 清除机构筛选残留（来自仪表盘或日历点击）
-    const orgFilter = document.getElementById('filterOrg');
-    if (orgFilter) orgFilter.value = '';
+    // 同时清除仪表盘高亮
     document.querySelectorAll('#dashboardOrgs > div').forEach(el => {
       el.classList.remove('border-indigo-500', 'bg-indigo-50');
     });
@@ -977,9 +977,10 @@ function dashFilterByOrg(orgId) {
     const cards = document.querySelectorAll('#dashboardOrgs > div');
     if (cards[idx]) cards[idx].classList.add('border-indigo-500', 'bg-indigo-50');
   }
-  // 跳转到沟通时间线页并筛选
+  // 跳转到沟通时间线页并筛选（机构入口：清除所有条件，仅保留机构）
   switchView('timeline');
   setTimeout(() => {
+    clearTimelineFilters();
     document.getElementById('filterOrg').value = dashSelectedOrg || '';
     renderTimeline();
   }, 50);
@@ -1888,6 +1889,16 @@ function clearDateFilter() {
   const d = document.getElementById('filterDate');
   if (d) d.value = '';
   renderTimeline();
+}
+
+function clearTimelineFilters() {
+  const ids = ['filterDate', 'filterOrg', 'filterPerson', 'filterType', 'filterKeyword'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.tagName === 'SELECT') el.value = '';
+    else if (el.tagName === 'INPUT') el.value = '';
+  });
 }
 
 function filterByOrgDash(orgId) {
