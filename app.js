@@ -648,6 +648,12 @@ function switchView(viewName) {
       document.getElementById('filterDate').value = '';
       document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
     }
+    // 清除机构筛选残留（来自仪表盘或日历点击）
+    const orgFilter = document.getElementById('filterOrg');
+    if (orgFilter) orgFilter.value = '';
+    document.querySelectorAll('#dashboardOrgs > div').forEach(el => {
+      el.classList.remove('border-indigo-500', 'bg-indigo-50');
+    });
     renderTimeline();
   }
   if (viewName === 'record') renderRecordPage();
