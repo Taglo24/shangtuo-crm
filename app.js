@@ -1948,12 +1948,13 @@ function renderMyUserChoices(selectedIds) {
   container.innerHTML = users.length === 0
     ? '<div class="text-center py-2 text-gray-400 text-sm col-span-2">暂无我方人员</div>'
     : users.map(u => {
-        const checked = selectedIds.includes(u.id) ? 'selected' : '';
-        return `<div class="checkbox-tag ${checked} border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5" data-my-user-id="${u.id}" onclick="toggleMyUser('${u.id}')">
-          <span class="w-4 h-4 inline-flex items-center justify-center border border-gray-400 rounded text-white bg-transparent">
-            <i data-lucide="check" class="w-3 h-3 ${checked ? '' : 'hidden'}"></i>
-          </span>
-          <span>${u.name}</span>
+        const isChecked = selectedIds.includes(u.id);
+        const boxClass = isChecked ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-gray-300';
+        const iconHidden = isChecked ? '' : 'hidden';
+        const rowClass = isChecked ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300';
+        return `<div class="checkbox-tag ${rowClass} border rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5 cursor-pointer" data-my-user-id="${u.id}" onclick="toggleMyUser('${u.id}')">
+          <span class="myuser-box w-4 h-4 inline-flex items-center justify-center border rounded ${boxClass} flex-shrink-0"><i data-lucide="check" class="w-3 h-3 text-white ${iconHidden}"></i></span>
+          <span class="${isChecked ? 'text-indigo-700 font-semibold' : ''}">${u.name}</span>
           <span class="text-xs text-gray-400">${u.position}</span>
         </div>`;
       }).join('');
@@ -1963,17 +1964,25 @@ function renderMyUserChoices(selectedIds) {
 window.toggleMyUser = function(userId) {
   const label = document.querySelector(`[data-my-user-id="${userId}"]`);
   if (!label) return;
-  const icon = label.querySelector('i[data-lucide="check"]');
-  if (label.classList.contains('selected')) {
-    label.classList.remove('selected');
-    label.classList.remove('border-indigo-400');
-    label.classList.add('border-gray-300');
-    if (icon) icon.classList.add('hidden');
-  } else {
+  const box = label.querySelector('.myuser-box');
+  const icon = box ? box.querySelector('i[data-lucide="check"]') : null;
+  const nameSpan = label.children[1];
+  const willSelect = !label.classList.contains('selected');
+
+  if (willSelect) {
     label.classList.add('selected');
     label.classList.remove('border-gray-300');
-    label.classList.add('border-indigo-400');
-    if (icon) icon.classList.remove('hidden');
+    label.classList.add('border-indigo-400', 'bg-indigo-50');
+    if (box) { box.classList.remove('bg-white', 'border-gray-300'); box.classList.add('bg-indigo-500', 'border-indigo-500'); }
+    if (icon) { icon.classList.remove('hidden'); }
+    if (nameSpan) { nameSpan.classList.add('text-indigo-700', 'font-semibold'); }
+  } else {
+    label.classList.remove('selected');
+    label.classList.remove('border-indigo-400', 'bg-indigo-50');
+    label.classList.add('border-gray-300');
+    if (box) { box.classList.remove('bg-indigo-500', 'border-indigo-500'); box.classList.add('bg-white', 'border-gray-300'); }
+    if (icon) { icon.classList.add('hidden'); }
+    if (nameSpan) { nameSpan.classList.remove('text-indigo-700', 'font-semibold'); }
   }
 };
 
