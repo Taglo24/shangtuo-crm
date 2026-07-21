@@ -1814,7 +1814,11 @@ function jumpToRecord(recordId) {
 
 function renderTimelineItem(r, isOrgBreak) {
   const type = TYPE_CONFIG[r.type];
-  const myUser = getMyUser(r.myUserId);
+  const myUserIds = parseMyUserIds(r);
+  const myUsers = myUserIds.map(id => getMyUser(id)).filter(Boolean);
+  const myUserNames = myUsers.length > 0
+    ? myUsers.map(u => u.name + '（' + u.position + '）').join('、')
+    : '未知';
   const persons = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean);
   const orgs = [...new Set(persons.map(p => p.orgId))];
   const keyword = (document.getElementById('filterKeyword')?.value || '').trim();
@@ -1827,11 +1831,12 @@ function renderTimelineItem(r, isOrgBreak) {
           <span class="type-badge ${type.cls}">${type.label}</span>
           ${orgs.map(oid => { const o = getOrg(oid); return o ? `<span class="text-sm text-white bg-indigo-600 px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors" onclick="filterByOrg('${oid}')" title="点击筛选该机构"><i data-lucide="building-2" class="w-3 h-3"></i>${o.name}</span>` : ''; }).join('')}
           <span class="font-semibold text-gray-800 text-sm">${hl(r.title)}</span>
-          <button onclick="deleteRecord('${r.id}')" class="ml-auto text-gray-300 hover:text-red-500" title="删除"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          <button onclick="editRecord('${r.id}')" class="ml-auto text-gray-300 hover:text-blue-500" title="编辑"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+          <button onclick="deleteRecord('${r.id}')" class="text-gray-300 hover:text-red-500" title="删除"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
         </div>
         <p class="text-sm text-gray-600 leading-relaxed mb-3">${hl(r.content)}</p>
         <div class="flex items-center gap-4 flex-wrap text-xs">
-          <div class="flex items-center gap-1.5 text-gray-500"><i data-lucide="user" class="w-3.5 h-3.5"></i><span>我方：${myUser ? myUser.name + '（' + myUser.position + '）' : '未知'}</span></div>
+          <div class="flex items-center gap-1.5 text-gray-500"><i data-lucide="user" class="w-3.5 h-3.5"></i><span>我方：${escapeHtml(myUserNames)}</span></div>
           <div class="flex items-center gap-1.5 flex-wrap">
             <i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i>
             <span class="text-gray-400">甲方：</span>
@@ -1922,9 +1927,8 @@ async function deleteRecord(id) {
 // =====================================================
 function renderRecordPage() {
   document.getElementById('recDate').value = getDateOffset(0);
-  const myUserSelect = document.getElementById('recMyUser');
-  myUserSelect.innerHTML = '<option value="">请选择...</option>' + getActiveMyUsers().map(u => `<option value="${u.id}">${u.name}（${u.position}）</option>`).join('');
-
+  // 渲染我方人员多选
+  renderMyUserChoices([]);
   selectedClientPersons.clear();
   // 填充合作机构下拉
   const orgSelect = document.getElementById('recClientOrg');
@@ -1934,6 +1938,47 @@ function renderRecordPage() {
 
   updateTypeSelector();
   if (lucide) lucide.createIcons();
+}
+
+// 渲染我方人员多选框，selectedIds 为已选中的 id 数组
+function renderMyUserChoices(selectedIds) {
+  const container = document.getElementById('recMyUsers');
+  if (!container) return;
+  const users = getActiveMyUsers();
+  container.innerHTML = users.length === 0
+    ? '<div class="text-center py-2 text-gray-400 text-sm col-span-2">暂无我方人员</div>'
+    : users.map(u => {
+        const checked = selectedIds.includes(u.id) ? 'selected' : '';
+        return `<div class="checkbox-tag ${checked} border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5" data-my-user-id="${u.id}" onclick="toggleMyUser('${u.id}')">
+          <span class="w-4 h-4 inline-flex items-center justify-center border border-gray-400 rounded text-white bg-transparent">
+            <i data-lucide="check" class="w-3 h-3 ${checked ? '' : 'hidden'}"></i>
+          </span>
+          <span>${u.name}</span>
+          <span class="text-xs text-gray-400">${u.position}</span>
+        </div>`;
+      }).join('');
+  if (lucide) lucide.createIcons();
+}
+
+window.toggleMyUser = function(userId) {
+  const label = document.querySelector(`[data-my-user-id="${userId}"]`);
+  if (!label) return;
+  const icon = label.querySelector('i[data-lucide="check"]');
+  if (label.classList.contains('selected')) {
+    label.classList.remove('selected');
+    label.classList.remove('border-indigo-400');
+    label.classList.add('border-gray-300');
+    if (icon) icon.classList.add('hidden');
+  } else {
+    label.classList.add('selected');
+    label.classList.remove('border-gray-300');
+    label.classList.add('border-indigo-400');
+    if (icon) icon.classList.remove('hidden');
+  }
+};
+
+function getSelectedMyUserIds() {
+  return Array.from(document.querySelectorAll('#recMyUsers .checkbox-tag.selected')).map(el => el.dataset.myUserId);
 }
 
 // 选择机构后渲染该机构的人员
@@ -2075,15 +2120,17 @@ async function submitRecord(event) {
   event.preventDefault();
   const date = document.getElementById('recDate').value;
   const type = document.querySelector('input[name="recType"]:checked').value;
-  const myUserId = document.getElementById('recMyUser').value;
+  const myUserIds = getSelectedMyUserIds();
   const title = document.getElementById('recTitle').value.trim();
   const content = document.getElementById('recContent').value.trim();
 
-  if (!date || !type || !myUserId || !title || !content) { showToast('请填写所有必填项'); return; }
+  if (!date || !type || !title || !content) { showToast('请填写所有必填项'); return; }
+  if (myUserIds.length === 0) { document.getElementById('recMyUserError').classList.remove('hidden'); return; }
+  document.getElementById('recMyUserError').classList.add('hidden');
   if (selectedClientPersons.size === 0) { document.getElementById('recClientError').classList.remove('hidden'); return; }
   document.getElementById('recClientError').classList.add('hidden');
 
-  const record = { id: uid(), date, type, title, content, myUserId, clientPersonIds: Array.from(selectedClientPersons), createdAt: Date.now() };
+  const record = { id: uid(), date, type, title, content, myUserId: JSON.stringify(myUserIds), clientPersonIds: Array.from(selectedClientPersons), createdAt: Date.now() };
   DB.records.push(record);
   saveLocal();
   await syncToCloud('records', record);
@@ -2092,10 +2139,121 @@ async function submitRecord(event) {
   selectedClientPersons.clear();
   document.querySelectorAll('#recClientPersons .checkbox-tag').forEach(el => el.classList.remove('selected'));
   document.getElementById('recDate').value = getDateOffset(0);
+  renderMyUserChoices([]);
   updateTypeSelector();
 
   showToast('工作记录已提交，已同步到时间线');
   setTimeout(() => switchView('timeline'), 800);
+}
+
+// 编辑记录：滚动到录入页并预填
+function editRecord(recordId) {
+  const r = DB.records.find(x => x.id === recordId);
+  if (!r) { showToast('记录不存在'); return; }
+  // 预填字段
+  document.getElementById('recDate').value = r.date || '';
+  // 类型
+  const typeRadio = document.querySelector(`input[name="recType"][value="${r.type}"]`);
+  if (typeRadio) { typeRadio.checked = true; updateTypeSelector(); }
+  // 我方人员（兼容单值/JSON 数组）
+  const myIds = parseMyUserIds(r);
+  renderMyUserChoices(myIds);
+  // 标题/内容
+  document.getElementById('recTitle').value = r.title || '';
+  document.getElementById('recContent').value = r.content || '';
+  // 切换到录入页
+  switchView('record');
+  // 修改提交按钮为"保存修改"并绑定 recordId
+  const form = document.getElementById('recordForm');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i>保存修改';
+  submitBtn.dataset.editId = recordId;
+  // 添加取消编辑按钮（如果还没有）
+  let cancelBtn = document.getElementById('cancelEditBtn');
+  if (!cancelBtn) {
+    cancelBtn = document.createElement('button');
+    cancelBtn.id = 'cancelEditBtn';
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'px-6 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200';
+    cancelBtn.textContent = '取消编辑';
+    cancelBtn.onclick = cancelEditRecord;
+    submitBtn.parentNode.appendChild(cancelBtn);
+  }
+  // 滚动到顶部
+  window.scrollTo(0, 0);
+  showToast('已加载该记录，请修改后保存');
+  if (lucide) lucide.createIcons();
+}
+
+function cancelEditRecord() {
+  resetRecordForm();
+  switchView('timeline');
+  showToast('已取消编辑');
+}
+
+function resetRecordForm() {
+  const form = document.getElementById('recordForm');
+  form.reset();
+  selectedClientPersons.clear();
+  document.querySelectorAll('#recClientPersons .checkbox-tag').forEach(el => el.classList.remove('selected'));
+  document.getElementById('recDate').value = getDateOffset(0);
+  renderMyUserChoices([]);
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>提交记录';
+  delete submitBtn.dataset.editId;
+  updateTypeSelector();
+}
+
+// 解析记录的 myUserId 字段（兼容单值/JSON 数组）
+function parseMyUserIds(r) {
+  const v = r.myUserId;
+  if (!v) return [];
+  if (typeof v === 'string' && v.startsWith('[')) {
+    try { return JSON.parse(v); } catch { return [v]; }
+  }
+  return [v];
+}
+
+// 提交时根据是否处于编辑模式决定新建还是更新
+async function submitOrUpdateRecord() {
+  const form = document.getElementById('recordForm');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const editId = submitBtn.dataset.editId;
+  if (editId) {
+    await updateRecord(editId);
+  } else {
+    await submitRecord({ preventDefault: () => {} });
+  }
+}
+
+async function updateRecord(recordId) {
+  const r = DB.records.find(x => x.id === recordId);
+  if (!r) { showToast('记录不存在'); return; }
+  const date = document.getElementById('recDate').value;
+  const type = document.querySelector('input[name="recType"]:checked').value;
+  const myUserIds = getSelectedMyUserIds();
+  const title = document.getElementById('recTitle').value.trim();
+  const content = document.getElementById('recContent').value.trim();
+
+  if (!date || !type || !title || !content) { showToast('请填写所有必填项'); return; }
+  if (myUserIds.length === 0) { document.getElementById('recMyUserError').classList.remove('hidden'); return; }
+  document.getElementById('recMyUserError').classList.add('hidden');
+  if (selectedClientPersons.size === 0) { document.getElementById('recClientError').classList.remove('hidden'); return; }
+  document.getElementById('recClientError').classList.add('hidden');
+
+  r.date = date;
+  r.type = type;
+  r.title = title;
+  r.content = content;
+  r.myUserId = JSON.stringify(myUserIds);
+  r.clientPersonIds = Array.from(selectedClientPersons);
+
+  saveLocal();
+  await syncToCloud('records', r);
+
+  resetRecordForm();
+  showToast('修改已保存');
+  setTimeout(() => switchView('timeline'), 400);
 }
 
 // =====================================================

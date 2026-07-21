@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=8.2.2">
+  <link rel="stylesheet" href="style.css?v=8.3.0">
 </head>
 <body class="bg-gray-50 min-h-screen">
 
@@ -167,7 +167,7 @@
         <p class="text-gray-500 text-sm mt-1">记录每次商务沟通，自动同步到云端和时间线</p>
       </div>
       <div class="max-w-3xl bg-white rounded-xl border border-gray-200 p-8 record-form">
-        <form id="recordForm" onsubmit="submitRecord(event)">
+        <form id="recordForm" onsubmit="submitOrUpdateRecord()">
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通日期 <span class="text-red-500">*</span></label>
             <input type="date" id="recDate" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">沟通类型 <span class="text-red-500">*</span></label>
@@ -179,8 +179,9 @@
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-online"><input type="radio" name="recType" value="online" class="hidden"><i data-lucide="monitor" class="w-5 h-5"></i>线上</label>
               <label class="checkbox-tag border border-gray-300 rounded-lg px-3 py-2.5 text-center text-sm flex flex-col items-center gap-1 type-other"><input type="radio" name="recType" value="other" class="hidden"><i data-lucide="more-horizontal" class="w-5 h-5"></i>其他</label>
             </div></div>
-          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">我方参与人员 <span class="text-red-500">*</span></label>
-            <select id="recMyUser" required class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm"><option value="">请选择...</option></select></div>
+          <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">我方参与人员 <span class="text-red-500">*</span> <span class="text-xs text-gray-400 font-normal">（可多选）</span></label>
+            <div id="recMyUsers" class="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto grid grid-cols-2 gap-2"></div>
+            <p id="recMyUserError" class="text-red-500 text-xs mt-1 hidden">请至少选择一名我方人员</p></div>
           <div class="mb-5"><label class="block text-sm font-semibold text-gray-700 mb-2">对接甲方人员 <span class="text-red-500">*</span></label>
             <div class="mb-3">
               <label class="block text-xs text-gray-400 mb-1.5">第一步：选择合作机构</label>
@@ -233,6 +234,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=8.2.2"></script>
+  <script src="app.js?v=8.3.0"></script>
 </body>
 </html>
