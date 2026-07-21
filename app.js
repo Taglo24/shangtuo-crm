@@ -332,7 +332,16 @@ function saveLocal() {
 }
 
 function syncToCloud() { Cloud.scheduleSave(DB); }
-function removeFromCloud() { Cloud.scheduleSave(DB); }
+async function removeFromCloud(table, id) {
+  // 直接向 Supabase 发送 DELETE，不再走 upsert（upsert 无法删除记录）
+  if (!Cloud.client || !table || !id) return false;
+  try {
+    const { error } = await Cloud.client.from(table).delete().eq('id', id);
+    if (error) { console.error('[removeFromCloud] 删除失败:', error); return false; }
+    console.log('[removeFromCloud] 已删除', table, id);
+    return true;
+  } catch(e) { console.error('[removeFromCloud] 异常:', e); return false; }
+}
 
 function pushLocalToCloud() {
   showToast('正在同步...');
@@ -1916,7 +1925,9 @@ function filterByOrgDash(orgId) {
 async function deleteRecord(id) {
   if (!confirm('确定删除该沟通记录吗？')) return;
   DB.records = DB.records.filter(r => r.id !== id);
-  saveLocal();
+  // 只写 localStorage，不触发 scheduleSave（避免 upsert 把已删记录复活到云端）
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  // 直接从 Supabase 删除
   await removeFromCloud('records', id);
   renderTimeline();
   showToast('记录已删除');
