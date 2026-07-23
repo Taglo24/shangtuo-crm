@@ -1895,6 +1895,9 @@ function jumpToPerson(personId) {
 function filterByOrg(orgId) {
   const tl = document.getElementById('filterOrg');
   if (tl) tl.value = orgId;
+  // 点击机构时清除日期筛选，展示该机构所有时间的沟通记录
+  const dateFilter = document.getElementById('filterDate');
+  if (dateFilter) dateFilter.value = '';
   renderTimeline();
   if (lucide) lucide.createIcons();
 }
