@@ -616,8 +616,10 @@ function getDateOffset(days) {
 }
 
 function formatDate(dateStr) {
-  const d = new Date(dateStr);
-  const today = new Date(); today.setHours(0,0,0,0);
+  // 按本地时区解析日期字符串（避免 UTC 偏移导致"-1天前"）
+  const d = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0,0,0,0);
   const diff = Math.floor((today - d) / 86400000);
   if (diff === 0) return '今天';
   if (diff === 1) return '昨天';
@@ -626,7 +628,7 @@ function formatDate(dateStr) {
 }
 
 function formatDateFull(dateStr) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00');
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
 }
 
