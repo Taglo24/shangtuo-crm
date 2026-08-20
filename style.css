@@ -291,3 +291,20 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
 .tree-node[draggable="true"]:active {
   cursor: grabbing;
 }
+
+/* =====================================================
+   重点事项（时间线顶部，按机构维度）
+   ===================================================== */
+.keypoint-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.node-tag-progress { background: #dbeafe; color: #1e40af; }
+.node-tag-done { background: #d1fae5; color: #065f46; }
+.issue-tag { background: #fef3c7; color: #92400e; }
+.keypoint-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+.keypoint-expand.open { grid-template-rows: 1fr; }
+.keypoint-expand > .keypoint-expand-inner { overflow: hidden; min-height: 0; }
+.keypoint-card.open .keypoint-chevron { transform: rotate(180deg); }
+.keypoint-chevron { transition: transform 0.2s; }

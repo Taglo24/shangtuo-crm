@@ -24,7 +24,7 @@ const TYPE_CONFIG = {
   other:   { label: '其他', icon: 'file-text', color: '#6B7280', cls: 'type-other' },
 };
 
-let DB = { orgs: [], clientPersons: [], myUsers: [], records: [] };
+let DB = { orgs: [], clientPersons: [], myUsers: [], records: [], keypoints: [] };
 let selectedTreeNode = null;
 let selectedClientPersons = new Set();
 let dragState = null;
@@ -74,11 +74,19 @@ const Cloud = {
         this.client.from('client_persons').select('*'),
         this.client.from('records').select('*').order('created_at', { ascending: false })
       ]);
+      // 重点事项表独立加载（表可能尚未创建，失败不影响其他数据）
+      let keypointsR = { data: [] };
+      try {
+        keypointsR = await this.client.from('keypoints').select('*');
+      } catch(e) {
+        console.warn('[Cloud] keypoints 表加载失败（可能未建表）:', e);
+      }
       const data = {
         orgs: (orgsR.data || []).map(r => ({ id: r.id, name: r.name, industry: r.industry || '', createdAt: r.created_at || 0, detailUrl: r.detail_url || '', sortOrder: r.sort_order || 0 })),
         myUsers: (usersR.data || []).map(r => ({ id: r.id, name: r.name, position: r.position || '', status: r.status || 'active' })),
         clientPersons: (personsR.data || []).map(r => ({ id: r.id, orgId: r.org_id, name: r.name, position: r.position || '', importance: r.importance || 'C', parentId: r.parent_id || null, myContactId: r.my_contact_id || '', phone: r.phone || '', status: r.status || 'active' })),
-        records: (recordsR.data || []).map(r => ({ id: r.id, date: r.date || '', type: r.type || 'other', title: r.title || '', content: r.content || '', myUserId: r.my_user_id || '', clientPersonIds: r.client_person_ids || [], createdAt: r.created_at || 0 }))
+        records: (recordsR.data || []).map(r => ({ id: r.id, date: r.date || '', type: r.type || 'other', title: r.title || '', content: r.content || '', myUserId: r.my_user_id || '', clientPersonIds: r.client_person_ids || [], createdAt: r.created_at || 0 })),
+        keypoints: (keypointsR.data || []).map(k => ({ id: k.id, orgId: k.org_id, title: k.title || '', node: k.node || '', details: k.details || '', issues: k.issues || [], status: k.status || 'active', updatedAt: k.updated_at || 0 }))
       };
       this.status = 'on'; this.updateIndicator();
       return data;
@@ -109,6 +117,14 @@ const Cloud = {
         ops.push(this.client.from('records').upsert(db.records.map(r => ({ id: r.id, date: r.date || '', type: r.type || 'other', title: r.title || '', content: r.content || '', my_user_id: r.myUserId || '', client_person_ids: r.clientPersonIds || [], created_at: r.createdAt || 0, updated_at: now }))));
       }
       await Promise.all(ops);
+      // 重点事项表独立保存（表未创建时静默跳过，不影响其他数据）
+      try {
+        if (db.keypoints && db.keypoints.length) {
+          await this.client.from('keypoints').upsert(db.keypoints.map(k => ({ id: k.id, org_id: k.orgId, title: k.title || '', node: k.node || '', details: k.details || '', issues: k.issues || [], status: k.status || 'active', updated_at: now })));
+        }
+      } catch(e) {
+        console.warn('[Cloud] keypoints 表保存失败（可能未建表）:', e);
+      }
       this.status = 'on'; this.updateIndicator();
       return true;
     } catch(e) {
@@ -131,6 +147,7 @@ const Cloud = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'my_users' },    () => this._onRemoteChange())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_persons' }, () => this._onRemoteChange())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'records' },     () => this._onRemoteChange())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'keypoints' },  () => this._onRemoteChange())
       .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Realtime connected'); });
   },
 
@@ -407,6 +424,7 @@ function initSampleData() {
       { id: 'r5', date: getDateOffset(-10), type: 'email', title: '邮件发送·锐捷科技POC方案', content: '向产品总监高磊发送POC技术方案及时间安排，等待其内部评审反馈。', myUserId: 'my4', clientPersonIds: ['cp9'], createdAt: now - 86400000 * 10 },
       { id: 'r6', date: getDateOffset(-14), type: 'meeting', title: '锐捷科技·技术架构评审', content: '与林总及技术团队进行架构评审，讨论高并发场景下的性能保障方案。马主管提出数据迁移问题，已记录待跟进。', myUserId: 'my3', clientPersonIds: ['cp8', 'cp10'], createdAt: now - 86400000 * 14 },
     ],
+    keypoints: [],
   };
   saveLocal();
   Cloud.scheduleSave(DB);
@@ -449,6 +467,14 @@ function migrateData() {
       o.sortOrder = (idx + 1) * 100;
       migrated = true;
     }
+  });
+  // 兼容旧数据：重点事项数组缺失时补空，并给字段补默认值
+  if (!Array.isArray(DB.keypoints)) { DB.keypoints = []; migrated = true; }
+  DB.keypoints.forEach(k => {
+    if (!k.status) { k.status = 'active'; migrated = true; }
+    if (!Array.isArray(k.issues)) { k.issues = []; migrated = true; }
+    if (!k.node) { k.node = ''; migrated = true; }
+    if (!k.details) { k.details = ''; migrated = true; }
   });
   if (migrated) saveLocal();
 }
@@ -630,6 +656,20 @@ function formatDate(dateStr) {
 function formatDateFull(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const diff = Date.now() - ts;
+  if (diff < 0) return '刚刚';
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + '分钟前';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + '小时前';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + '天前';
+  return new Date(ts).toLocaleDateString('zh-CN');
 }
 
 function showToast(msg) {
@@ -1766,42 +1806,201 @@ function renderTimeline() {
   document.getElementById('timelineCount').textContent = `共 ${records.length} 条记录`;
 
   const container = document.getElementById('timelineList');
+
+  // 重点事项区（按当前筛选机构展示，未选机构时不展示）
+  const keypointsHtml = renderKeypointsHtml();
+
+  let recordsHtml = '';
   if (records.length === 0) {
-    container.innerHTML = '<div class="empty-state"><i data-lucide="inbox" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i><p>暂无沟通记录</p></div>';
-    if (lucide) lucide.createIcons();
-    return;
+    recordsHtml = '<div class="empty-state"><i data-lucide="inbox" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i><p>暂无沟通记录</p></div>';
+  } else {
+    const groups = {};
+    records.forEach(r => { if (!groups[r.date]) groups[r.date] = []; groups[r.date].push(r); });
+    // 同一日期内按机构分组排序
+    Object.values(groups).forEach(recs => {
+      recs.sort((a, b) => {
+        const ao = a.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+        const bo = b.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+        if (ao !== bo) return ao.localeCompare(bo);
+        return a.createdAt - b.createdAt;
+      });
+    });
+
+    recordsHtml = Object.entries(groups).map(([date, recs]) => `
+      <div class="mb-6 last:mb-0">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center"><i data-lucide="calendar" class="w-4 h-4 text-indigo-500"></i></div>
+          <span class="font-bold text-gray-800">${formatDateFull(date)}</span>
+          <span class="text-sm text-gray-400">（${formatDate(date)}）</span>
+          <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">${recs.length}条</span>
+        </div>
+        ${recs.map((r, i) => {
+          const curOrgs = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
+          const nextOrgs = i < recs.length - 1 ? recs[i+1].clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',') : '';
+          const isBreak = i === recs.length - 1 || curOrgs !== nextOrgs;
+          return renderTimelineItem(r, isBreak);
+        }).join('')}
+      </div>
+    `).join('');
   }
 
-  const groups = {};
-  records.forEach(r => { if (!groups[r.date]) groups[r.date] = []; groups[r.date].push(r); });
-  // 同一日期内按机构分组排序
-  Object.values(groups).forEach(recs => {
-    recs.sort((a, b) => {
-      const ao = a.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
-      const bo = b.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
-      if (ao !== bo) return ao.localeCompare(bo);
-      return a.createdAt - b.createdAt;
-    });
-  });
-
-  container.innerHTML = Object.entries(groups).map(([date, recs]) => `
-    <div class="mb-6 last:mb-0">
-      <div class="flex items-center gap-2 mb-4">
-        <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center"><i data-lucide="calendar" class="w-4 h-4 text-indigo-500"></i></div>
-        <span class="font-bold text-gray-800">${formatDateFull(date)}</span>
-        <span class="text-sm text-gray-400">（${formatDate(date)}）</span>
-        <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">${recs.length}条</span>
-      </div>
-      ${recs.map((r, i) => {
-        const curOrgs = r.clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',');
-        const nextOrgs = i < recs.length - 1 ? recs[i+1].clientPersonIds.map(id => getClientPerson(id)).filter(Boolean).map(p => p.orgId).join(',') : '';
-        const isBreak = i === recs.length - 1 || curOrgs !== nextOrgs;
-        return renderTimelineItem(r, isBreak);
-      }).join('')}
-    </div>
-  `).join('');
+  container.innerHTML = keypointsHtml + recordsHtml;
 
   if (lucide) lucide.createIcons();
+}
+
+// =====================================================
+// 重点事项（按机构维度，时间线顶部展示）
+// =====================================================
+function renderKeypointsHtml() {
+  const orgId = document.getElementById('filterOrg').value;
+  if (!orgId) return ''; // 未选机构时不展示
+  const org = getOrg(orgId);
+  if (!org) return '';
+
+  const items = DB.keypoints.filter(k => k.orgId === orgId).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+  let itemsHtml = '';
+  if (items.length === 0) {
+    itemsHtml = '<div class="text-center py-6 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">该机构暂无重点事项，点击右上角"新增"开始记录</div>';
+  } else {
+    itemsHtml = '<div class="space-y-3">' + items.map(k => {
+      const isDone = k.status === 'done';
+      const dotColor = isDone ? 'bg-green-500' : 'bg-blue-500';
+      const nodeTag = isDone ? 'node-tag-done' : 'node-tag-progress';
+      const titleCls = isDone ? 'text-gray-500 line-through' : 'text-gray-800';
+      const issues = Array.isArray(k.issues) ? k.issues : [];
+      return `
+        <div class="keypoint-card border ${isDone ? 'border-gray-200 bg-gray-50/50' : 'border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-white'} rounded-lg overflow-hidden" data-keypoint-id="${k.id}">
+          <div class="flex items-center justify-between p-3">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+              <span class="keypoint-dot ${dotColor} flex-shrink-0"></span>
+              <span class="font-medium ${titleCls}">${escapeHtml(k.title)}</span>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+              <span class="text-xs text-gray-400 flex-shrink-0">节点</span>
+              <span class="${nodeTag} text-xs px-2 py-0.5 rounded-full flex-shrink-0">${escapeHtml(k.node || '未设置')}</span>
+              ${issues.length ? '<span class="text-xs text-gray-400 flex-shrink-0">待推进</span>' : ''}
+              ${issues.map(iss => `<span class="issue-tag text-xs px-2 py-0.5 rounded-md flex-shrink-0">⚠ ${escapeHtml(iss)}</span>`).join('')}
+              <button onclick="openKeypointForm('${k.id}')" class="text-gray-400 hover:text-indigo-600" title="编辑"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+              <button onclick="deleteKeypoint('${k.id}')" class="text-gray-400 hover:text-red-600" title="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+              <button onclick="toggleKeypoint('${k.id}')" class="text-gray-400 hover:text-indigo-600 flex items-center flex-shrink-0" title="展开/收起"><i data-lucide="chevron-down" class="keypoint-chevron w-4 h-4"></i></button>
+            </div>
+          </div>
+          <div class="keypoint-expand">
+            <div class="keypoint-expand-inner">
+              <div class="border-t ${isDone ? 'border-gray-100' : 'border-indigo-100'} bg-white/60 p-4 text-sm">
+                <div class="text-gray-600 leading-relaxed">${escapeHtml(k.details || '')}</div>
+                <div class="text-xs text-gray-400 mt-3">最后更新：${timeAgo(k.updatedAt)}</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }).join('') + '</div>';
+  }
+
+  return `
+    <section class="keypoints-section mb-6">
+      <div class="bg-white rounded-xl border border-gray-200 border-l-4 border-l-indigo-500 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
+            <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">${escapeHtml(org.name)}</span></h3>
+            ${items.length ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${items.length} 项</span>` : ''}
+          </div>
+          <button onclick="openKeypointForm()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增</button>
+        </div>
+        ${itemsHtml}
+      </div>
+    </section>`;
+}
+
+function toggleKeypoint(id) {
+  const card = document.querySelector(`[data-keypoint-id="${id}"]`);
+  if (!card) return;
+  const area = card.querySelector('.keypoint-expand');
+  if (area) {
+    area.classList.toggle('open');
+    card.classList.toggle('open');
+  }
+}
+
+function openKeypointForm(id) {
+  const orgId = document.getElementById('filterOrg').value;
+  if (!orgId) { showToast('请先在上方筛选框选择机构'); return; }
+  const k = id ? DB.keypoints.find(x => x.id === id) : null;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>${k ? '编辑' : '新增'}重点事项</h3>
+      <form onsubmit="saveKeypoint(); return false;">
+        <input type="hidden" id="kpId" value="${k ? k.id : ''}">
+        <input type="hidden" id="kpOrgId" value="${orgId}">
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">事项标题 <span class="text-red-500">*</span></label>
+          <input id="kpTitle" value="${k ? escapeHtml(k.title) : ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" placeholder="例：与蚂蚁财富建立战略合作">
+        </div>
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">当前节点</label>
+          <input id="kpNode" value="${k ? escapeHtml(k.node) : ''}" list="kpNodeOptions" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" placeholder="例：合同签署阶段">
+          <datalist id="kpNodeOptions">
+            <option value="初次接触"><option value="需求确认"><option value="尽职调查中"><option value="合同签署阶段"><option value="已落地执行"><option value="已完成">
+          </datalist>
+        </div>
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">详细说明（展开后展示）</label>
+          <textarea id="kpDetails" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" placeholder="事项背景、进展、关键信息...">${k ? escapeHtml(k.details) : ''}</textarea>
+        </div>
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">待推进问题（每行一个）</label>
+          <textarea id="kpIssues" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" placeholder="收益分成比例&#10;数据接口对接">${k ? escapeHtml((k.issues || []).join('\n')) : ''}</textarea>
+        </div>
+        <div class="mb-5">
+          <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="kpDone" ${k && k.status === 'done' ? 'checked' : ''}>
+            标记为已完成
+          </label>
+        </div>
+        <div class="flex gap-3">
+          <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+          <button type="submit" class="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">保存</button>
+        </div>
+      </form>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+function saveKeypoint() {
+  const id = document.getElementById('kpId').value;
+  const orgId = document.getElementById('kpOrgId').value;
+  const title = document.getElementById('kpTitle').value.trim();
+  const node = document.getElementById('kpNode').value.trim();
+  const details = document.getElementById('kpDetails').value.trim();
+  const issues = document.getElementById('kpIssues').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const done = document.getElementById('kpDone').checked;
+  if (!title) { showToast('请填写事项标题'); return; }
+  const now = Date.now();
+  if (id) {
+    const k = DB.keypoints.find(x => x.id === id);
+    if (k) { Object.assign(k, { title, node, details, issues, status: done ? 'done' : 'active', updatedAt: now }); }
+  } else {
+    DB.keypoints.push({ id: uid(), orgId, title, node, details, issues, status: done ? 'done' : 'active', updatedAt: now });
+  }
+  saveLocal();
+  closeModal();
+  renderTimeline();
+  showToast('重点事项已保存');
+}
+
+async function deleteKeypoint(id) {
+  if (!confirm('确定删除该重点事项吗？')) return;
+  DB.keypoints = DB.keypoints.filter(k => k.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  const ok = await removeFromCloud('keypoints', id);
+  if (!ok) showToast('云端删除失败，请检查网络');
+  renderTimeline();
+  showToast('重点事项已删除');
 }
 
 // 点击相关沟通记录跳转到沟通时间线页并高亮定位
