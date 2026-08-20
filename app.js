@@ -1946,15 +1946,83 @@ function renderRecordPage() {
   // 渲染我方人员多选
   renderMyUserChoices([]);
   selectedClientPersons.clear();
-  // 填充合作机构下拉
-  const orgSelect = document.getElementById('recClientOrg');
-  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + sortOrgs().map(o => `<option value="${o.id}">${o.name}</option>`).join('');
-  // 隐藏人员区域
+  // 填充合作机构可搜索下拉（recOrgOptions 供模糊搜索过滤）
+  recOrgOptions = sortOrgs();
+  const orgSearch = document.getElementById('recClientOrgSearch');
+  if (orgSearch) orgSearch.value = '';
+  const orgIdInput = document.getElementById('recClientOrg');
+  if (orgIdInput) orgIdInput.value = '';
+  // 隐藏人员区域并清空人员搜索框
   document.getElementById('recClientPersonsContainer').classList.add('hidden');
+  const personSearch = document.getElementById('recPersonSearch');
+  if (personSearch) personSearch.value = '';
 
   updateTypeSelector();
   if (lucide) lucide.createIcons();
 }
+
+// =====================================================
+// 合作机构可搜索下拉（录入页第一步）
+// =====================================================
+let recOrgOptions = [];
+let recOrgFilteredList = [];
+
+function renderRecOrgList(keyword) {
+  const list = document.getElementById('recOrgList');
+  if (!list) return;
+  const kw = (keyword || '').trim().toLowerCase();
+  recOrgFilteredList = recOrgOptions.filter(o =>
+    !kw || (o.name || '').toLowerCase().includes(kw) || (o.industry || '').toLowerCase().includes(kw)
+  );
+  if (recOrgFilteredList.length === 0) {
+    list.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400 text-center">未找到匹配机构</div>';
+  } else {
+    list.innerHTML = recOrgFilteredList.map((o, i) => `
+      <div class="px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer flex items-center justify-between gap-2 border-b border-gray-50 last:border-b-0" onclick="selectRecOrgById(${i})">
+        <span class="truncate">${escapeHtml(o.name)}</span>
+        ${o.industry ? `<span class="text-xs text-gray-400 truncate flex-shrink-0">${escapeHtml(o.industry)}</span>` : ''}
+      </div>`).join('');
+  }
+  list.classList.remove('hidden');
+}
+
+window.openRecOrgList = function() {
+  renderRecOrgList(document.getElementById('recClientOrgSearch').value);
+  document.getElementById('recOrgList').classList.remove('hidden');
+};
+
+window.filterRecOrgList = function() {
+  renderRecOrgList(document.getElementById('recClientOrgSearch').value);
+};
+
+window.closeRecOrgList = function() {
+  const list = document.getElementById('recOrgList');
+  if (list) list.classList.add('hidden');
+};
+
+window.selectRecOrgById = function(index) {
+  const o = recOrgFilteredList[index];
+  if (!o) return;
+  document.getElementById('recClientOrg').value = o.id;
+  const search = document.getElementById('recClientOrgSearch');
+  if (search) search.value = o.name;
+  closeRecOrgList();
+  renderRecClientPersons();
+};
+
+window.selectRecOrg = function(orgId, orgName) {
+  document.getElementById('recClientOrg').value = orgId;
+  const search = document.getElementById('recClientOrgSearch');
+  if (search) search.value = orgName;
+  closeRecOrgList();
+  renderRecClientPersons();
+};
+
+// 点击页面其他区域时关闭机构下拉
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('recOrgBox');
+  if (box && !box.contains(e.target)) closeRecOrgList();
+});
 
 // 渲染我方人员多选框，selectedIds 为已选中的 id 数组
 function renderMyUserChoices(selectedIds) {
@@ -2006,7 +2074,9 @@ function getSelectedMyUserIds() {
   return Array.from(document.querySelectorAll('#recMyUsers .checkbox-tag.selected')).map(el => el.dataset.myUserId);
 }
 
-// 选择机构后渲染该机构的人员
+// 选择机构后渲染该机构的人员（支持按姓名/职位模糊搜索）
+let recClientPersonsCache = [];
+
 function renderRecClientPersons() {
   const orgId = document.getElementById('recClientOrg').value;
   const container = document.getElementById('recClientPersons');
@@ -2018,9 +2088,15 @@ function renderRecClientPersons() {
   }
 
   selectedClientPersons.clear();
-  const persons = DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived');
+  recClientPersonsCache = DB.clientPersons.filter(p => p.orgId === orgId && p.status !== 'archived');
+  const kw = (document.getElementById('recPersonSearch').value || '').trim().toLowerCase();
+  const persons = recClientPersonsCache.filter(p =>
+    !kw || (p.name || '').toLowerCase().includes(kw) || (p.position || '').toLowerCase().includes(kw)
+  );
   if (persons.length === 0) {
-    container.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">该机构暂无人员</div>';
+    container.innerHTML = kw
+      ? '<div class="text-center py-4 text-gray-400 text-sm">未找到匹配人员</div>'
+      : '<div class="text-center py-4 text-gray-400 text-sm">该机构暂无人员</div>';
   } else {
     container.innerHTML = persons.map(p => `
       <div class="checkbox-tag imp-${p.importance} border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5" data-person-id="${p.id}" onclick="togglePerson('${p.id}')">
@@ -2030,6 +2106,11 @@ function renderRecClientPersons() {
   wrapper.classList.remove('hidden');
   if (lucide) lucide.createIcons();
 }
+
+// 对接人员搜索框输入时重新渲染列表
+window.filterRecPersonList = function() {
+  renderRecClientPersons();
+};
 
 // 从录入页面新增机构
 function openAddOrgFromRecord() {
@@ -2062,12 +2143,9 @@ async function saveOrgFromRecord() {
   saveLocal();
   await syncToCloud('orgs', org);
   closeModal();
-  // 刷新下拉并自动选中新机构
-  const orgSelect = document.getElementById('recClientOrg');
-  orgSelect.innerHTML = '<option value="">请选择机构...</option>' + sortOrgs().map(o => `<option value="${o.id}">${o.name}</option>`).join('');
-  orgSelect.value = org.id;
-  // 触发人员区域刷新
-  renderRecClientPersons();
+  // 刷新可搜索下拉并自动选中新机构
+  recOrgOptions = sortOrgs();
+  selectRecOrg(org.id, org.name);
   showToast('机构添加成功，已自动选中');
 }
 
@@ -2160,12 +2238,7 @@ async function submitRecord(event) {
   saveLocal();
   await syncToCloud('records', record);
 
-  document.getElementById('recordForm').reset();
-  selectedClientPersons.clear();
-  document.querySelectorAll('#recClientPersons .checkbox-tag').forEach(el => el.classList.remove('selected'));
-  document.getElementById('recDate').value = getDateOffset(0);
-  renderMyUserChoices([]);
-  updateTypeSelector();
+  resetRecordForm();
 
   showToast('工作记录已提交，已同步到时间线');
   setTimeout(() => switchView('timeline'), 800);
@@ -2223,6 +2296,16 @@ function resetRecordForm() {
   document.querySelectorAll('#recClientPersons .checkbox-tag').forEach(el => el.classList.remove('selected'));
   document.getElementById('recDate').value = getDateOffset(0);
   renderMyUserChoices([]);
+  // 关闭机构下拉、隐藏人员区域并清空人员搜索框
+  closeRecOrgList();
+  // 注意：Chromium 中 hidden input 的 value 赋值会同步 defaultValue，form.reset() 无法清空，需显式置空
+  const orgIdInput = document.getElementById('recClientOrg');
+  if (orgIdInput) orgIdInput.value = '';
+  const orgSearch = document.getElementById('recClientOrgSearch');
+  if (orgSearch) orgSearch.value = '';
+  document.getElementById('recClientPersonsContainer').classList.add('hidden');
+  const personSearch = document.getElementById('recPersonSearch');
+  if (personSearch) personSearch.value = '';
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>提交记录';
   delete submitBtn.dataset.editId;
