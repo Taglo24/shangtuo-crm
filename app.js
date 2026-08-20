@@ -744,9 +744,10 @@ function renderDashboard() {
   if (orgsContainer) {
     const sortedOrgs = sortOrgs();
     orgsContainer.innerHTML = sortedOrgs.length ? sortedOrgs.map(o => {
-      const persons = getActivePersons(o.id);
-      const records = DB.records.filter(r => r.clientPersonIds.some(id => { const p = getClientPerson(id); return p && p.orgId === o.id; }));
-      const keyCount = persons.filter(p => p.importance === 'S' || p.importance === 'A').length;
+      // 重点事项统计（版本A：事项数）
+      const orgKeypoints = DB.keypoints.filter(k => k.orgId === o.id);
+      const kpCount = orgKeypoints.length;
+      const pendingCount = orgKeypoints.filter(k => Array.isArray(k.issues) && k.issues.length > 0).length;
       return `
         <div draggable="true" data-org-id="${o.id}" ondragstart="dragStartOrg(event,'${o.id}')" ondragover="dragOverOrg(event)" ondragleave="dragLeaveOrg(event)" ondrop="dropOrg(event,'${o.id}')" ondragend="dragEndOrg(event)"
           class="border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition-all card-hover cursor-move">
@@ -767,9 +768,8 @@ function renderDashboard() {
             </div>
           </div>
           <div class="flex items-center gap-4 text-xs cursor-pointer" onclick="dashFilterByOrg('${o.id}')">
-            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${persons.length}人</span></div>
-            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="star" class="w-3.5 h-3.5 text-orange-400"></i><span>核心${keyCount}人</span></div>
-            <div class="flex items-center gap-1 text-gray-500"><i data-lucide="message-square" class="w-3.5 h-3.5"></i><span>${records.length}条沟通</span></div>
+            <div class="flex items-center gap-1.5 ${kpCount > 0 ? 'text-indigo-600' : 'text-gray-400'} font-medium"><i data-lucide="target" class="w-4 h-4"></i><span>重点事项：<b class="text-base">${kpCount}</b>项</span></div>
+            <div class="flex items-center gap-1.5 ${pendingCount > 0 ? 'text-amber-600' : 'text-gray-400'} font-medium"><i data-lucide="alert-triangle" class="w-4 h-4"></i><span>待推进：<b class="text-base">${pendingCount}</b>项</span></div>
           </div>
         </div>
       `;
