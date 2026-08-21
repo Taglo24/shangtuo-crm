@@ -308,3 +308,7 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
 .keypoint-expand > .keypoint-expand-inner { overflow: hidden; min-height: 0; }
 .keypoint-card.open .keypoint-chevron { transform: rotate(180deg); }
 .keypoint-chevron { transition: transform 0.2s; }
+
+/* 录入页重点事项区：去掉外层间距 */
+#recKeypointsContainer .keypoints-section { margin-bottom: 0; }
+#recKeypointsList .keypoint-card { cursor: pointer; }

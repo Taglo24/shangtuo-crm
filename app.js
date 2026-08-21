@@ -1807,8 +1807,9 @@ function renderTimeline() {
 
   const container = document.getElementById('timelineList');
 
-  // 重点事项区（按当前筛选机构展示，未选机构时不展示）
-  const keypointsHtml = renderKeypointsHtml();
+  // 重点事项区（按当前筛选机构展示，未选机构时不展示）—— 渲染到独立容器，避免与记录列表相互影响
+  const kpContainer = document.getElementById('timelineKeypoints');
+  if (kpContainer) kpContainer.innerHTML = renderKeypointsHtml();
 
   let recordsHtml = '';
   if (records.length === 0) {
@@ -1844,17 +1845,17 @@ function renderTimeline() {
     `).join('');
   }
 
-  container.innerHTML = keypointsHtml + recordsHtml;
+  container.innerHTML = recordsHtml;
 
   if (lucide) lucide.createIcons();
 }
 
 // =====================================================
-// 重点事项（按机构维度，时间线顶部展示）
-// =====================================================
-function renderKeypointsHtml() {
-  const orgId = document.getElementById('filterOrg').value;
-  if (!orgId) return ''; // 未选机构时不展示
+// 重点事项（按机构维度，支持时间线和录入页两处复用）
+// 入参：orgId — 机构 id（空则不返回内容），containerId — 可选，扩展用
+// 返回：HTML 字符串（包含 section 包装），由调用方 innerHTML 渲染
+function renderKeypointsSection(orgId, containerId) {
+  if (!orgId) return '';
   const org = getOrg(orgId);
   if (!org) return '';
 
@@ -1870,6 +1871,7 @@ function renderKeypointsHtml() {
       const nodeTag = isDone ? 'node-tag-done' : 'node-tag-progress';
       const titleCls = isDone ? 'text-gray-500 line-through' : 'text-gray-800';
       const issues = Array.isArray(k.issues) ? k.issues : [];
+      // orgId 嵌入 onclick 上下文，确保编辑/删除/展开都作用于当前机构
       return `
         <div class="keypoint-card border ${isDone ? 'border-gray-200 bg-gray-50/50' : 'border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-white'} rounded-lg overflow-hidden" data-keypoint-id="${k.id}">
           <div class="flex items-center justify-between p-3">
@@ -1882,7 +1884,7 @@ function renderKeypointsHtml() {
               <span class="${nodeTag} text-xs px-2 py-0.5 rounded-full flex-shrink-0">${escapeHtml(k.node || '未设置')}</span>
               ${issues.length ? '<span class="text-xs text-gray-400 flex-shrink-0">待推进</span>' : ''}
               ${issues.map(iss => `<span class="issue-tag text-xs px-2 py-0.5 rounded-md flex-shrink-0">⚠ ${escapeHtml(iss)}</span>`).join('')}
-              <button onclick="openKeypointForm('${k.id}')" class="text-gray-400 hover:text-indigo-600" title="编辑"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+              <button onclick="openKeypointForm('${orgId}', '${k.id}')" class="text-gray-400 hover:text-indigo-600" title="编辑"><i data-lucide="pencil" class="w-4 h-4"></i></button>
               <button onclick="deleteKeypoint('${k.id}')" class="text-gray-400 hover:text-red-600" title="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
               <button onclick="toggleKeypoint('${k.id}')" class="text-gray-400 hover:text-indigo-600 flex items-center flex-shrink-0" title="展开/收起"><i data-lucide="chevron-down" class="keypoint-chevron w-4 h-4"></i></button>
             </div>
@@ -1901,18 +1903,43 @@ function renderKeypointsHtml() {
 
   return `
     <section class="keypoints-section mb-6">
-      <div class="bg-white rounded-xl border border-gray-200 border-l-4 border-l-indigo-500 p-5">
-        <div class="flex items-center justify-between mb-4">
-          <div class="flex items-center gap-2">
-            <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
-            <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">${escapeHtml(org.name)}</span></h3>
-            ${items.length ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${items.length} 项</span>` : ''}
-          </div>
-          <button onclick="openKeypointForm()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增</button>
-        </div>
-        ${itemsHtml}
-      </div>
+      ${itemsHtml}
     </section>`;
+}
+
+// 时间线页面：渲染当前筛选机构的重点事项（仅当筛选了单个机构时）
+function renderKeypointsHtml() {
+  const orgId = document.getElementById('filterOrg').value;
+  return renderKeypointsSection(orgId);
+}
+
+// 录入工作页面：渲染当前所选机构的重点事项（机构变化时调用）
+function renderRecKeypoints() {
+  const orgId = document.getElementById('recClientOrg').value;
+  const org = orgId ? getOrg(orgId) : null;
+  const container = document.getElementById('recKeypointsContainer');
+  const listEl = document.getElementById('recKeypointsList');
+  const nameEl = document.getElementById('recKeypointsOrgName');
+  const countEl = document.getElementById('recKeypointsCount');
+
+  if (!orgId || !org) {
+    container.classList.add('hidden');
+    listEl.innerHTML = '';
+    return;
+  }
+  // 顶部固定标题与计数
+  nameEl.textContent = org.name;
+  const count = DB.keypoints.filter(k => k.orgId === orgId).length;
+  countEl.textContent = count ? `${count} 项` : '';
+
+  // 列表：空态/有内容
+  const html = renderKeypointsSection(orgId);
+  if (!html) { listEl.innerHTML = ''; return; }
+  // 去掉外层 section 包装，仅取列表部分
+  const inner = html.replace(/^[\s\S]*<section class="keypoints-section[^>]*>/, '').replace(/<\/section>\s*$/, '');
+  listEl.innerHTML = inner;
+  container.classList.remove('hidden');
+  if (lucide) lucide.createIcons();
 }
 
 function toggleKeypoint(id) {
@@ -1925,9 +1952,10 @@ function toggleKeypoint(id) {
   }
 }
 
-function openKeypointForm(id) {
-  const orgId = document.getElementById('filterOrg').value;
-  if (!orgId) { showToast('请先在上方筛选框选择机构'); return; }
+function openKeypointForm(orgId, id) {
+  // 兼容旧调用（仅传 id）：从时间线筛选框取
+  if (!orgId) orgId = document.getElementById('filterOrg').value;
+  if (!orgId) { showToast('请先选择机构'); return; }
   const k = id ? DB.keypoints.find(x => x.id === id) : null;
   document.getElementById('modalBody').innerHTML = `
     <div class="p-6">
@@ -1990,6 +2018,11 @@ function saveKeypoint() {
   saveLocal();
   closeModal();
   renderTimeline();
+  // 录入页若选择了同一机构，同步刷新该处的事项列表
+  const recOrg = document.getElementById('recClientOrg').value;
+  if (recOrg === orgId) renderRecKeypoints();
+  // 仪表盘卡片统计可能受影响
+  if (typeof renderDashboard === 'function') renderDashboard();
   showToast('重点事项已保存');
 }
 
@@ -2000,8 +2033,20 @@ async function deleteKeypoint(id) {
   const ok = await removeFromCloud('keypoints', id);
   if (!ok) showToast('云端删除失败，请检查网络');
   renderTimeline();
+  if (document.getElementById('recKeypointsContainer') &&
+      !document.getElementById('recKeypointsContainer').classList.contains('hidden')) {
+    renderRecKeypoints();
+  }
+  if (typeof renderDashboard === 'function') renderDashboard();
   showToast('重点事项已删除');
 }
+
+// 从录入页触发的"新增"按钮：传入当前已选机构
+window.openKeypointFormFromRecord = function() {
+  const orgId = document.getElementById('recClientOrg').value;
+  if (!orgId) { showToast('请先选择合作机构'); return; }
+  openKeypointForm(orgId);
+};
 
 // 点击相关沟通记录跳转到沟通时间线页并高亮定位
 function jumpToRecord(recordId) {
@@ -2155,6 +2200,8 @@ function renderRecordPage() {
   document.getElementById('recClientPersonsContainer').classList.add('hidden');
   const personSearch = document.getElementById('recPersonSearch');
   if (personSearch) personSearch.value = '';
+  // 隐藏并清空录入页重点事项模块（进入录入页默认无机构选择）
+  renderRecKeypoints();
 
   updateTypeSelector();
   if (lucide) lucide.createIcons();
@@ -2207,6 +2254,7 @@ window.selectRecOrgById = function(index) {
   if (search) search.value = o.name;
   closeRecOrgList();
   renderRecClientPersons();
+  renderRecKeypoints();
 };
 
 window.selectRecOrg = function(orgId, orgName) {
@@ -2215,6 +2263,7 @@ window.selectRecOrg = function(orgId, orgName) {
   if (search) search.value = orgName;
   closeRecOrgList();
   renderRecClientPersons();
+  renderRecKeypoints();
 };
 
 // 点击页面其他区域时关闭机构下拉
@@ -2505,6 +2554,11 @@ function resetRecordForm() {
   document.getElementById('recClientPersonsContainer').classList.add('hidden');
   const personSearch = document.getElementById('recPersonSearch');
   if (personSearch) personSearch.value = '';
+  // 隐藏并清空录入页重点事项模块
+  const recKPC = document.getElementById('recKeypointsContainer');
+  if (recKPC) { recKPC.classList.add('hidden'); }
+  const recKPL = document.getElementById('recKeypointsList');
+  if (recKPL) recKPL.innerHTML = '';
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>提交记录';
   delete submitBtn.dataset.editId;
@@ -2604,7 +2658,15 @@ function closeModal() {
 // =====================================================
 // 初始化
 // =====================================================
-function renderAll() { renderDashboard(); }
+function renderAll() {
+  renderDashboard();
+  // 当前可见视图若包含重点事项区，同步刷新
+  const activeView = document.querySelector('.view.active');
+  if (activeView) {
+    if (activeView.id === 'view-timeline') renderTimeline();
+    if (activeView.id === 'view-record') renderRecKeypoints();
+  }
+}
 
 async function init() {
   document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
