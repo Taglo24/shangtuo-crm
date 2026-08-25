@@ -1996,13 +1996,23 @@ function renderKeypointItemsHtml(orgId) {
   return '<div class="space-y-3">' + items.map(k => renderKeypointCard(k, orgId)).join('') + '</div>';
 }
 
-// 渲染单个机构的重点事项 section（v8.6.0 行为：未选机构返回空）
+// 渲染单个机构的重点事项 section（时间线单机构视图，v8.7.1 起加标题行）
 function renderKeypointsSection(orgId, containerId) {
   if (!orgId) return '';
   const org = getOrg(orgId);
   if (!org) return '';
+  const items = DB.keypoints.filter(k => k.orgId === orgId);
+  const pending = items.filter(k => k.status !== 'done' && Array.isArray(k.issues) && k.issues.length > 0).length;
   return `
     <section class="keypoints-section mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2 flex-wrap">
+          <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
+          <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">${escapeHtml(org.name)}</span></h3>
+          <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${items.length} 项</span>
+          ${pending ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">待推进 ${pending} 项</span>` : ''}
+        </div>
+      </div>
       ${renderKeypointItemsHtml(orgId)}
     </section>`;
 }
@@ -2068,12 +2078,8 @@ function renderRecKeypoints() {
   const count = DB.keypoints.filter(k => k.orgId === orgId).length;
   countEl.textContent = count ? `${count} 项` : '';
 
-  // 列表：空态/有内容
-  const html = renderKeypointsSection(orgId);
-  if (!html) { listEl.innerHTML = ''; return; }
-  // 去掉外层 section 包装，仅取列表部分
-  const inner = html.replace(/^[\s\S]*<section class="keypoints-section[^>]*>/, '').replace(/<\/section>\s*$/, '');
-  listEl.innerHTML = inner;
+  // 列表：直接用纯 itemsHtml（不再剥 section 包装，避免与录入页顶部固定标题重复）
+  listEl.innerHTML = renderKeypointItemsHtml(orgId);
   container.classList.remove('hidden');
   if (lucide) lucide.createIcons();
 }
