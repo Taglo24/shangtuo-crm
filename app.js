@@ -2007,13 +2007,16 @@ function renderKeypointsSection(orgId, containerId) {
   const pending = items.filter(k => k.status !== 'done' && Array.isArray(k.issues) && k.issues.length > 0).length;
   return `
     <section class="keypoints-section mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2 flex-wrap">
-          <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
+      <div class="flex items-center justify-between mb-4 gap-3">
+        <div class="flex items-center gap-2 flex-wrap min-w-0">
+          <i data-lucide="target" class="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
           <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">${escapeHtml(org.name)}</span></h3>
           <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${items.length} 项</span>
           ${pending ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">待推进 ${pending} 项</span>` : ''}
         </div>
+        <button onclick="openKeypointForm('${orgId}')" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 flex items-center gap-1 flex-shrink-0">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>新增
+        </button>
       </div>
       ${renderKeypointItemsHtml(orgId)}
     </section>`;
@@ -2043,13 +2046,16 @@ function renderAllKeypointsSummary() {
 
   return `
     <section class="keypoints-section mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2 flex-wrap">
-          <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
+      <div class="flex items-center justify-between mb-4 gap-3">
+        <div class="flex items-center gap-2 flex-wrap min-w-0">
+          <i data-lucide="target" class="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
           <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">全部机构</span></h3>
           <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">共 ${totalCount} 项</span>
           <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">待推进 ${pendingCount} 项</span>
         </div>
+        <button onclick="openNewKeypointDialog()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 flex items-center gap-1 flex-shrink-0">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>新增
+        </button>
       </div>
       ${groupsHtml}
     </section>`;
@@ -2059,6 +2065,37 @@ function renderAllKeypointsSummary() {
 function renderKeypointsHtml() {
   const orgId = document.getElementById('filterOrg').value;
   return orgId ? renderKeypointsSection(orgId) : renderAllKeypointsSummary();
+}
+
+// 全部机构汇总区"新增"按钮：弹窗选择机构后进入表单
+function openNewKeypointDialog() {
+  const orgs = sortOrgs();
+  if (orgs.length === 0) { showToast('暂无机构，请先在"机构人员"页创建'); return; }
+  document.getElementById('modalBody').innerHTML = `
+    <div class="p-6 max-w-md">
+      <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>新增重点事项</h3>
+      <p class="text-sm text-gray-500 mb-5">请先选择该事项归属的机构</p>
+      <label class="block text-xs font-semibold text-gray-600 mb-1.5">归属机构 <span class="text-red-500">*</span></label>
+      <select id="newKpOrgSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-5 focus:border-indigo-500 focus:outline-none">
+        <option value="">请选择机构</option>
+        ${orgs.map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('')}
+      </select>
+      <div class="flex gap-3">
+        <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200">取消</button>
+        <button type="button" onclick="confirmNewKpOrg()" class="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">下一步</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  if (lucide) lucide.createIcons();
+}
+
+function confirmNewKpOrg() {
+  const sel = document.getElementById('newKpOrgSelect');
+  const orgId = sel ? sel.value : '';
+  if (!orgId) { showToast('请选择机构'); return; }
+  closeModal();
+  openKeypointForm(orgId);
 }
 
 // 录入工作页面：渲染当前所选机构的重点事项（机构变化时调用）
