@@ -312,3 +312,105 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
 /* 录入页重点事项区：去掉外层间距 */
 #recKeypointsContainer .keypoints-section { margin-bottom: 0; }
 #recKeypointsList .keypoint-card { cursor: pointer; }
+
+/* =====================================================
+   重点事项分组（时间线全部机构汇总）
+   ===================================================== */
+.kp-group { border-left: 3px solid #6366f1; padding-left: 12px; }
+.kp-group-header { font-weight: 600; color: #4338ca; font-size: 14px; }
+.kp-group-header i { color: #6366f1; flex-shrink: 0; }
+
+/* =====================================================
+   仪表盘重点事项轮播（从下向上步进滚动）
+   ===================================================== */
+.marquee-wrap {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 20px;
+  height: 110px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.marquee-wrap:hover {
+  border-color: #6366f1;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.08);
+}
+.marquee-header {
+  position: absolute;
+  top: 14px; left: 20px; right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+  pointer-events: none;
+}
+.marquee-header-title {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.marquee-header-action {
+  font-size: 12px;
+  color: #6366f1;
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.marquee-viewport {
+  position: absolute;
+  top: 38px; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+}
+.marquee-track {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  will-change: transform;
+}
+.marquee-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 20px;
+  height: 56px;
+  border-left: 3px solid #6366f1;
+  background: linear-gradient(90deg, rgba(238, 242, 255, 0.4), transparent);
+  border-radius: 0 8px 8px 0;
+}
+.marquee-item.is-done { border-left-color: #22c55e; }
+.marquee-item-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #3b82f6; flex-shrink: 0;
+}
+.marquee-item.is-done .marquee-item-dot { background: #22c55e; }
+.marquee-org {
+  font-size: 13px; font-weight: 600; color: #4338ca;
+  flex-shrink: 0; min-width: 88px;
+}
+.marquee-title {
+  font-size: 14px; color: #111827; font-weight: 500;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.marquee-item.is-done .marquee-title { color: #6b7280; text-decoration: line-through; }
+.marquee-node {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: #dbeafe; color: #1d4ed8; flex-shrink: 0;
+}
+.marquee-item.is-done .marquee-node { background: #dcfce7; color: #15803d; }
+.marquee-issue {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px;
+  background: #fef3c7; color: #b45309; flex-shrink: 0;
+}
+.marquee-fade {
+  position: absolute; left: 0; right: 0; height: 24px;
+  pointer-events: none; z-index: 1;
+}
+.marquee-fade-top { top: 38px; background: linear-gradient(180deg, #fff, transparent); }
+.marquee-fade-bottom { bottom: 0; background: linear-gradient(0deg, #fff, transparent); }

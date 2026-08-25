@@ -739,6 +739,9 @@ function renderDashboard() {
 
   renderDashboardCalendar();
 
+  // 重点事项轮播区（统计卡片下方、日历上方）
+  renderKeypointsMarquee();
+
   // 右侧：合作机构列表（支持拖拽排序）
   const orgsContainer = document.getElementById('dashboardOrgs');
   if (orgsContainer) {
@@ -777,6 +780,101 @@ function renderDashboard() {
   }
 
   if (lucide) lucide.createIcons();
+}
+
+// =====================================================
+// 仪表盘重点事项轮播（从下向上步进滚动，每项展示 3.5s）
+// =====================================================
+function renderKeypointsMarquee() {
+  const container = document.getElementById('keypointsMarquee');
+  if (!container) return;
+
+  const items = [...DB.keypoints].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  if (items.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const itemHtml = items.map(k => {
+    const org = getOrg(k.orgId);
+    const isDone = k.status === 'done';
+    const firstIssue = (Array.isArray(k.issues) && k.issues.length) ? k.issues[0] : '';
+    return `
+      <div class="marquee-item ${isDone ? 'is-done' : ''}">
+        <span class="marquee-item-dot"></span>
+        <span class="marquee-org">${escapeHtml(org ? org.name : '未知机构')}</span>
+        <span class="marquee-title">${escapeHtml(k.title)}</span>
+        <span class="marquee-node">${escapeHtml(k.node || '未设置')}</span>
+        ${firstIssue ? `<span class="marquee-issue">⚠ ${escapeHtml(firstIssue)}</span>` : ''}
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="marquee-wrap" onclick="goToTimelineFromMarquee()" title="点击查看全部重点事项">
+      <div class="marquee-header">
+        <span class="marquee-header-title"><i data-lucide="target" class="w-3.5 h-3.5"></i>重点事项 · 全部机构</span>
+        <span class="marquee-header-action">点击查看全部 <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></span>
+      </div>
+      <div class="marquee-fade marquee-fade-top"></div>
+      <div class="marquee-fade marquee-fade-bottom"></div>
+      <div class="marquee-viewport">
+        <div class="marquee-track">${itemHtml}${itemHtml}</div>
+      </div>
+    </div>`;
+
+  startKeypointsMarquee(container);
+}
+
+function startKeypointsMarquee(container) {
+  const wrap = container.querySelector('.marquee-wrap');
+  const track = container.querySelector('.marquee-track');
+  if (!wrap || !track) return;
+
+  // 清理旧定时器（重渲染时避免多个定时器叠加）
+  if (container._marqueeTimer) clearInterval(container._marqueeTimer);
+
+  const kids = track.children;
+  if (kids.length < 2) return; // 不足两条无需轮播
+
+  // 动态测量单条步长（高度 + 间距），避免硬编码
+  const stepH = kids[1].offsetTop - kids[0].offsetTop;
+  if (!stepH) return;
+
+  const itemCount = kids.length / 2; // 内容复制了两份
+  const showMs = 3500;  // 每项展示 3.5s
+  const animMs = 600;   // 过渡 0.6s
+  const cycleMs = showMs + animMs;
+
+  let index = 0;
+  function goNext() {
+    index++;
+    track.style.transition = `transform ${animMs}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+    track.style.transform = `translateY(-${index * stepH}px)`;
+    // 滚完第一份内容后无缝回到开头
+    if (index >= itemCount) {
+      setTimeout(() => {
+        track.style.transition = 'none';
+        index = 0;
+        track.style.transform = 'translateY(0)';
+        void track.offsetHeight;
+        track.style.transition = `transform ${animMs}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+      }, animMs);
+    }
+  }
+
+  container._marqueeTimer = setInterval(goNext, cycleMs);
+
+  // hover 暂停 / 移出继续
+  wrap.addEventListener('mouseenter', () => { if (container._marqueeTimer) clearInterval(container._marqueeTimer); });
+  wrap.addEventListener('mouseleave', () => {
+    if (container._marqueeTimer) clearInterval(container._marqueeTimer);
+    container._marqueeTimer = setInterval(goNext, cycleMs);
+  });
+}
+
+// 点击轮播区：跳转到沟通时间线（无筛选状态）
+function goToTimelineFromMarquee() {
+  switchView('timeline');
 }
 
 // 跳转到机构人员页
@@ -1851,66 +1949,104 @@ function renderTimeline() {
 }
 
 // =====================================================
-// 重点事项（按机构维度，支持时间线和录入页两处复用）
-// 入参：orgId — 机构 id（空则不返回内容），containerId — 可选，扩展用
-// 返回：HTML 字符串（包含 section 包装），由调用方 innerHTML 渲染
+// 重点事项（按机构维度，支持时间线、录入页、仪表盘多处复用）
+// =====================================================
+
+// 渲染单条重点事项卡片
+function renderKeypointCard(k, orgId) {
+  const isDone = k.status === 'done';
+  const dotColor = isDone ? 'bg-green-500' : 'bg-blue-500';
+  const nodeTag = isDone ? 'node-tag-done' : 'node-tag-progress';
+  const titleCls = isDone ? 'text-gray-500 line-through' : 'text-gray-800';
+  const issues = Array.isArray(k.issues) ? k.issues : [];
+  return `
+    <div class="keypoint-card border ${isDone ? 'border-gray-200 bg-gray-50/50' : 'border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-white'} rounded-lg overflow-hidden" data-keypoint-id="${k.id}">
+      <div class="flex items-center justify-between p-3">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <span class="keypoint-dot ${dotColor} flex-shrink-0"></span>
+          <span class="font-medium ${titleCls}">${escapeHtml(k.title)}</span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+          <span class="text-xs text-gray-400 flex-shrink-0">节点</span>
+          <span class="${nodeTag} text-xs px-2 py-0.5 rounded-full flex-shrink-0">${escapeHtml(k.node || '未设置')}</span>
+          ${issues.length ? '<span class="text-xs text-gray-400 flex-shrink-0">待推进</span>' : ''}
+          ${issues.map(iss => `<span class="issue-tag text-xs px-2 py-0.5 rounded-md flex-shrink-0">⚠ ${escapeHtml(iss)}</span>`).join('')}
+          <button onclick="openKeypointForm('${orgId}', '${k.id}')" class="text-gray-400 hover:text-indigo-600" title="编辑"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button onclick="deleteKeypoint('${k.id}')" class="text-gray-400 hover:text-red-600" title="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          <button onclick="toggleKeypoint('${k.id}')" class="text-gray-400 hover:text-indigo-600 flex items-center flex-shrink-0" title="展开/收起"><i data-lucide="chevron-down" class="keypoint-chevron w-4 h-4"></i></button>
+        </div>
+      </div>
+      <div class="keypoint-expand">
+        <div class="keypoint-expand-inner">
+          <div class="border-t ${isDone ? 'border-gray-100' : 'border-indigo-100'} bg-white/60 p-4 text-sm">
+            <div class="text-gray-600 leading-relaxed">${escapeHtml(k.details || '')}</div>
+            <div class="text-xs text-gray-400 mt-3">最后更新：${timeAgo(k.updatedAt)}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// 渲染某机构的重点事项列表（不含 section 包装）
+function renderKeypointItemsHtml(orgId) {
+  const items = DB.keypoints.filter(k => k.orgId === orgId).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  if (items.length === 0) {
+    return '<div class="text-center py-6 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">该机构暂无重点事项，点击右上角"新增"开始记录</div>';
+  }
+  return '<div class="space-y-3">' + items.map(k => renderKeypointCard(k, orgId)).join('') + '</div>';
+}
+
+// 渲染单个机构的重点事项 section（v8.6.0 行为：未选机构返回空）
 function renderKeypointsSection(orgId, containerId) {
   if (!orgId) return '';
   const org = getOrg(orgId);
   if (!org) return '';
-
-  const items = DB.keypoints.filter(k => k.orgId === orgId).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-  let itemsHtml = '';
-  if (items.length === 0) {
-    itemsHtml = '<div class="text-center py-6 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">该机构暂无重点事项，点击右上角"新增"开始记录</div>';
-  } else {
-    itemsHtml = '<div class="space-y-3">' + items.map(k => {
-      const isDone = k.status === 'done';
-      const dotColor = isDone ? 'bg-green-500' : 'bg-blue-500';
-      const nodeTag = isDone ? 'node-tag-done' : 'node-tag-progress';
-      const titleCls = isDone ? 'text-gray-500 line-through' : 'text-gray-800';
-      const issues = Array.isArray(k.issues) ? k.issues : [];
-      // orgId 嵌入 onclick 上下文，确保编辑/删除/展开都作用于当前机构
-      return `
-        <div class="keypoint-card border ${isDone ? 'border-gray-200 bg-gray-50/50' : 'border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-white'} rounded-lg overflow-hidden" data-keypoint-id="${k.id}">
-          <div class="flex items-center justify-between p-3">
-            <div class="flex items-center gap-2 min-w-0 flex-1">
-              <span class="keypoint-dot ${dotColor} flex-shrink-0"></span>
-              <span class="font-medium ${titleCls}">${escapeHtml(k.title)}</span>
-            </div>
-            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-              <span class="text-xs text-gray-400 flex-shrink-0">节点</span>
-              <span class="${nodeTag} text-xs px-2 py-0.5 rounded-full flex-shrink-0">${escapeHtml(k.node || '未设置')}</span>
-              ${issues.length ? '<span class="text-xs text-gray-400 flex-shrink-0">待推进</span>' : ''}
-              ${issues.map(iss => `<span class="issue-tag text-xs px-2 py-0.5 rounded-md flex-shrink-0">⚠ ${escapeHtml(iss)}</span>`).join('')}
-              <button onclick="openKeypointForm('${orgId}', '${k.id}')" class="text-gray-400 hover:text-indigo-600" title="编辑"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-              <button onclick="deleteKeypoint('${k.id}')" class="text-gray-400 hover:text-red-600" title="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-              <button onclick="toggleKeypoint('${k.id}')" class="text-gray-400 hover:text-indigo-600 flex items-center flex-shrink-0" title="展开/收起"><i data-lucide="chevron-down" class="keypoint-chevron w-4 h-4"></i></button>
-            </div>
-          </div>
-          <div class="keypoint-expand">
-            <div class="keypoint-expand-inner">
-              <div class="border-t ${isDone ? 'border-gray-100' : 'border-indigo-100'} bg-white/60 p-4 text-sm">
-                <div class="text-gray-600 leading-relaxed">${escapeHtml(k.details || '')}</div>
-                <div class="text-xs text-gray-400 mt-3">最后更新：${timeAgo(k.updatedAt)}</div>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    }).join('') + '</div>';
-  }
-
   return `
     <section class="keypoints-section mb-6">
-      ${itemsHtml}
+      ${renderKeypointItemsHtml(orgId)}
     </section>`;
 }
 
-// 时间线页面：渲染当前筛选机构的重点事项（仅当筛选了单个机构时）
+// 新增：所有机构重点事项分组汇总（全部机构视图）
+function renderAllKeypointsSummary() {
+  const orgsWithKp = sortOrgs().filter(o => DB.keypoints.some(k => k.orgId === o.id));
+  if (orgsWithKp.length === 0) return '';
+
+  const totalCount = DB.keypoints.length;
+  const pendingCount = DB.keypoints.filter(k => k.status !== 'done' && Array.isArray(k.issues) && k.issues.length > 0).length;
+
+  const groupsHtml = orgsWithKp.map(o => {
+    const items = DB.keypoints.filter(k => k.orgId === o.id);
+    const pending = items.filter(k => k.status !== 'done' && Array.isArray(k.issues) && k.issues.length > 0).length;
+    return `
+      <div class="kp-group mb-4 last:mb-0">
+        <div class="kp-group-header flex items-center gap-2 mb-2">
+          <i data-lucide="building-2" class="w-4 h-4"></i>
+          <span>${escapeHtml(o.name)}</span>
+          <span class="text-xs text-gray-400 font-normal">（${items.length} 项 · ${pending} 项待推进）</span>
+        </div>
+        ${renderKeypointItemsHtml(o.id)}
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="keypoints-section mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2 flex-wrap">
+          <i data-lucide="target" class="w-5 h-5 text-indigo-600"></i>
+          <h3 class="font-semibold text-gray-800">重点事项 · <span class="text-indigo-600">全部机构</span></h3>
+          <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">共 ${totalCount} 项</span>
+          <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">待推进 ${pendingCount} 项</span>
+        </div>
+      </div>
+      ${groupsHtml}
+    </section>`;
+}
+
+// 时间线页面：按当前筛选渲染重点事项（全部机构=分组汇总，单机构=该机构）
 function renderKeypointsHtml() {
   const orgId = document.getElementById('filterOrg').value;
-  return renderKeypointsSection(orgId);
+  return orgId ? renderKeypointsSection(orgId) : renderAllKeypointsSummary();
 }
 
 // 录入工作页面：渲染当前所选机构的重点事项（机构变化时调用）
