@@ -691,7 +691,9 @@ function switchView(viewName) {
   if (viewName === 'dashboard') renderDashboard();
   if (viewName === 'people') renderPeoplePage();
   if (viewName === 'timeline') {
-    document.querySelector('#view-timeline .page-title').textContent = '沟通时间线';
+    // v8.7.2 起页面顶部移除 page-title h2（移到汇总区下方作章节标题），设置改为可选
+    const pt = document.querySelector('#view-timeline .page-title');
+    if (pt) pt.textContent = '沟通时间线';
     // 清除所有筛选条件（顶部导航栏入口：完全清空）
     clearTimelineFilters();
     if (pendingDateFilter) {
