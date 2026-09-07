@@ -791,7 +791,13 @@ function renderKeypointsMarquee() {
   const container = document.getElementById('keypointsMarquee');
   if (!container) return;
 
-  const items = [...DB.keypoints].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const items = [...DB.keypoints].sort((a, b) => {
+    // 进行中(active)优先，已完成(done)沉底
+    const da = a.status === 'done' ? 1 : 0;
+    const db = b.status === 'done' ? 1 : 0;
+    if (da !== db) return da - db;
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
   if (items.length === 0) {
     container.innerHTML = '';
     return;
@@ -805,6 +811,7 @@ function renderKeypointsMarquee() {
       <div class="marquee-item ${isDone ? 'is-done' : ''}">
         <span class="marquee-item-dot"></span>
         <span class="marquee-org">${escapeHtml(org ? org.name : '未知机构')}</span>
+        ${isDone ? '<span class="done-tag">【已完成】</span>' : ''}
         <span class="marquee-title">${escapeHtml(k.title)}</span>
         <span class="marquee-node">${escapeHtml(k.node || '未设置')}</span>
         ${firstIssue ? `<span class="marquee-issue">⚠ ${escapeHtml(firstIssue)}</span>` : ''}
@@ -1959,13 +1966,14 @@ function renderKeypointCard(k, orgId) {
   const isDone = k.status === 'done';
   const dotColor = isDone ? 'bg-green-500' : 'bg-blue-500';
   const nodeTag = isDone ? 'node-tag-done' : 'node-tag-progress';
-  const titleCls = isDone ? 'text-gray-500 line-through' : 'text-gray-800';
+  const titleCls = 'text-gray-800';
   const issues = Array.isArray(k.issues) ? k.issues : [];
   return `
     <div class="keypoint-card border ${isDone ? 'border-gray-200 bg-gray-50/50' : 'border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-white'} rounded-lg overflow-hidden" data-keypoint-id="${k.id}">
       <div class="flex items-center justify-between p-3">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <span class="keypoint-dot ${dotColor} flex-shrink-0"></span>
+          ${isDone ? '<span class="done-tag">【已完成】</span>' : ''}
           <span class="font-medium ${titleCls}">${escapeHtml(k.title)}</span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0 ml-3">
@@ -1991,7 +1999,13 @@ function renderKeypointCard(k, orgId) {
 
 // 渲染某机构的重点事项列表（不含 section 包装）
 function renderKeypointItemsHtml(orgId) {
-  const items = DB.keypoints.filter(k => k.orgId === orgId).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const items = DB.keypoints.filter(k => k.orgId === orgId).sort((a, b) => {
+    // 进行中(active)优先，已完成(done)沉底
+    const da = a.status === 'done' ? 1 : 0;
+    const db = b.status === 'done' ? 1 : 0;
+    if (da !== db) return da - db;
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
   if (items.length === 0) {
     return '<div class="text-center py-6 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">该机构暂无重点事项，点击右上角"新增"开始记录</div>';
   }

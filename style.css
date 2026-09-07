@@ -299,6 +299,8 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
 .node-tag-progress { background: #dbeafe; color: #1e40af; }
 .node-tag-done { background: #d1fae5; color: #065f46; }
 .issue-tag { background: #fef3c7; color: #92400e; }
+/* 已完成事项标签（替代删除线） */
+.done-tag { display: inline-block; font-size: 12px; font-weight: 600; color: #15803d; background: #dcfce7; padding: 1px 8px; border-radius: 6px; flex-shrink: 0; }
 .keypoint-expand {
   display: grid;
   grid-template-rows: 0fr;
@@ -398,7 +400,7 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
   font-size: 14px; color: #111827; font-weight: 500;
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.marquee-item.is-done .marquee-title { color: #6b7280; text-decoration: line-through; }
+.marquee-item.is-done .marquee-title { color: #374151; }
 .marquee-node {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: #dbeafe; color: #1d4ed8; flex-shrink: 0;
