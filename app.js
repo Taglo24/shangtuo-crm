@@ -1,6 +1,6 @@
 // =====================================================
 // 商拓通 · 商务协作管理平台 - 应用逻辑
-// v8.0.0 - 用户认证体系 + Supabase 实时数据库
+// v8.7.5 - 修复示例数据污染云端（示例数据仅限本地预览，不再自动推送）
 // =====================================================
 
 const STORAGE_KEY = 'shangtuo_data_v1';
@@ -378,7 +378,9 @@ async function loadFromCloud() {
   return false;
 }
 
-function initSampleData() {
+// 示例数据仅用于本地预览，严禁写入云端
+// syncCloud 参数保留为 true 时才会推送（仅供手动"重置为示例数据"使用）
+function initSampleData(syncCloud = false) {
   const now = Date.now();
   DB = {
     orgs: [
@@ -427,21 +429,31 @@ function initSampleData() {
     keypoints: [],
   };
   saveLocal();
-  Cloud.scheduleSave(DB);
+  // 关键：默认不推送云端，避免示例数据污染真实数据库
+  if (syncCloud) Cloud.scheduleSave(DB);
 }
 
 async function loadData() {
   // 避免重复初始化（已在 init() 中初始化过）
   if (!Cloud.client) Cloud.init();
-  // 尝试从云端加载
+  // 优先从云端加载
   if (Cloud.enabled) {
-    const ok = await loadFromCloud();
-    if (ok) {
+    const data = await Cloud.loadAll();
+    if (data) {
+      // 云端有响应（无论是否有数据）——以云端为准
+      DB = data;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
       migrateData();
+      // 云端为空时不灌示例数据：示例只属于本地预览
       return;
     }
+    // 云端请求失败（null）→ 用本地缓存兜底，保证离线可用
+    const cached = localStorage.getItem(STORAGE_KEY);
+    if (cached) {
+      try { DB = JSON.parse(cached); migrateData(); return; } catch(e) {}
+    }
   }
-  // 降级到本地
+  // 从未连上云端且无缓存 → 才用示例数据（仅本地，不推云端）
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     DB = JSON.parse(saved);
@@ -476,16 +488,20 @@ function migrateData() {
     if (!k.node) { k.node = ''; migrated = true; }
     if (!k.details) { k.details = ''; migrated = true; }
   });
-  if (migrated) saveLocal();
+  if (migrated) {
+    // 只写本地缓存，不触发云端同步
+    // 迁移属于本地兜底修正，回写云端会引发"远程变更→重载→再迁移"的自激循环
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  }
 }
 
+// 仅用于本地预览重置：只写 localStorage，绝不推云端
 async function resetData() {
-  if (!confirm('确定要重置为示例数据吗？当前数据将被清除。')) return;
+  if (!confirm('确定要在本地载入示例数据吗？\n\n注意：示例数据仅存在于本机浏览器，不会影响云端真实数据。')) return;
   localStorage.removeItem(STORAGE_KEY);
-  initSampleData();
-  await loadFromCloud();
+  initSampleData(false);
   renderAll();
-  showToast('数据已重置');
+  showToast('已在本地载入示例数据（未同步云端）');
 }
 
 // =====================================================
